@@ -26,7 +26,21 @@ def parse_fasta(file_path: str) -> dict:
             sequences[sequence_name] = ''.join(sequence)
     return sequences
 
-sequences = parse_fasta("data/reference/genomes/Escherichia_coli_complete_genome.fna")
-print(len(sequences))
-for name, seq in sequences.items():
-    print(name, len(seq))
+def extract_kmers(sequence: str, k: int) -> list:
+    """
+    Extracts k-mers from a given sequence.
+    
+    Args:
+        sequence (str): The input sequence
+        k (int): The length of the k-mers to extract
+
+    Returns:
+        list: A list of k-mers
+    """
+    if k <= 0:
+        raise ValueError("k must be a positive integer")
+    if k > len(sequence):
+        return []
+    
+    kmers = [sequence[i:i+k] for i in range(len(sequence) - k + 1)]
+    return kmers
