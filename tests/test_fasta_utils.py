@@ -1,7 +1,7 @@
 
 from fasta_utils import parse_fasta
 from fasta_utils import extract_kmers
-from fasta_utils import build_kmer_index
+from classifier import build_kmer_index
 
 def test_parse_fasta_multiple_sequences(tmp_path):
     fake_fasta_content = ">seq1\nACGT\nACGT\n>seq2\nTTTT\n"
@@ -95,13 +95,13 @@ def test_build_kmer_index_deduplicates():
     }
     k = 3
     expected_index = {
-        "ACG": ["seq1"],
-        "CGT": ["seq1"],
-        "GTA": ["seq1"],
-        "TAC": ["seq1"],
-        "TTT": ["seq2"]
+        "ACG": {"seq1"},
+        "CGT": {"seq1"},
+        "GTA": {"seq1"},
+        "TAC": {"seq1"},
+        "TTT": {"seq2"}
     }
-    
+
     result = build_kmer_index(sequences, k)
-    
+
     assert result == expected_index
