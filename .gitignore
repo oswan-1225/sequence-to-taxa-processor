@@ -218,7 +218,6 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Extra stuff
-data/
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
