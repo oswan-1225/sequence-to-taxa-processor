@@ -44,3 +44,4 @@ def extract_kmers(sequence: str, k: int) -> list:
     
     kmers = [sequence[i:i+k] for i in range(len(sequence) - k + 1)]
     return kmers
+
