@@ -2,6 +2,8 @@ import argparse
 import pickle
 from fasta_utils import parse_fasta
 from classifier_functions import classify_read_top_hit
+from tqdm import tqdm
+import pandas as pd
 
 def main():
     parser = argparse.ArgumentParser(description="Classify sequencing reads against a pre-built k-mer reference index.")
@@ -19,10 +21,17 @@ def main():
     reads = parse_fasta(args.reads)
     print(f"Loaded {len(reads)} reads from {args.reads}")
 
-
     results = []
-    for read_name, read_seq in reads.items():
+    for read_name, read_seq in tqdm(reads.items(), desc="Classifying reads"):
         classification = classify_read_top_hit(read_seq, kmer_index, args.k)
-        results.append((read_name, classification['best_match'], classification['confidence']))   
+        results.append({
+            "read_id": read_name,
+            "best_match": classification['best_match'],
+            "confidence": classification['confidence']
+        })
+    results_df = pd.DataFrame(results)
+    results_df.to_csv(args.output, index=False)
+    print(f"Classification results saved to {args.output}")
+    
 if __name__ == "__main__":
     main()
