@@ -1,5 +1,6 @@
 from fasta_utils import parse_fasta
 from fasta_utils import extract_kmers
+from tqdm import tqdm
 
 def build_kmer_index(sequences: dict, k: int) -> dict:
     """
@@ -13,7 +14,7 @@ def build_kmer_index(sequences: dict, k: int) -> dict:
         dict: A dictionary keys: k-mers, values: list of sequence names containing the k-mer
     """
     kmer_index = {}
-    for seq_name, seq in sequences.items():
+    for seq_name, seq in tqdm(sequences.items(), desc="Indexing genomes"):
         kmers = extract_kmers(seq, k)
         for kmer in kmers:
             kmer_index.setdefault(kmer, set()).add(seq_name)

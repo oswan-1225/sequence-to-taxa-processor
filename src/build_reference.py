@@ -1,14 +1,17 @@
+import argparse
 import os
 from fasta_utils import parse_fasta
-from classifier import build_kmer_index
+from classifier_functions import build_kmer_index
+import pickle
 
-GENOME_DIR = 'data/reference/genomes'
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+GENOME_DIR = os.path.join(SCRIPT_DIR, "..", "data", "reference", "genomes") # Path to the directory containing the genome .fna files
 K = 21 # Kmer length
-OUTPUT_FILE = 'data/reference/kmer_index.pkl'
+OUTPUT_FILE = os.path.join(SCRIPT_DIR, "..", "data", "reference", "kmer_index.pkl") # Outputs the k-mer index to a pickle file for later use
 
 def load_all_genomes(genome_dir: str) -> dict:
     """
-    Loads every .fna file in a given directory into a dictiojnary of 
+    Loads every .fna file in a given directory into a dictionary of 
     {species name: sequence}, merging multi-sequence genomes
     (chromosomes + plasmid} into a one species level key.)
     """
@@ -22,11 +25,25 @@ def load_all_genomes(genome_dir: str) -> dict:
             all_sequences[species_name] = ''.join(sequences.values())
     return all_sequences
 
-if __name__ == "__main__":
-    genomes = load_all_genomes(GENOME_DIR)
-    print(f"Loaded {len(genomes)} genomes from {GENOME_DIR}")
-    for name, seq in genomes.items():
-        print(f"{name}: {len(seq)} bases")
+def main():
+    parser = argparse.ArgumentParser(description="Build a k-mer reference index from a folder of reference genomes.")
+    parser.add_argument("--genome_dir", required=True, help="Path to a folder of reference genome .fna/.fasta files")
+    parser.add_argument("--output", required=True, help="Where to save the resulting k-mer index (.pkl)")
+    parser.add_argument("--k", type=int, default=21, help="K-mer length (default: 21)")
 
-    index = build_kmer_index(genomes, K)
-    print(f"Built k-mer index with {len(index)} unique k-mers of length {K}")
+    args = parser.parse_args()
+
+    genomes = load_all_genomes(args.genome_dir)
+    print(f"Loaded {len(genomes)} genomes from {args.genome_dir}")
+    for name, seq in genomes.items():
+        print(f"  {name}: {len(seq)} bases")
+
+    index = build_kmer_index(genomes, args.k)
+    print(f"Built k-mer index with {len(index)} unique k-mers of length {args.k}")
+
+    with open(args.output, 'wb') as f:
+        pickle.dump(index, f)
+    print(f"Saved index to {args.output}")
+
+if __name__ == "__main__":
+    main()
