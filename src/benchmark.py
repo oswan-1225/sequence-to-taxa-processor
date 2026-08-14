@@ -1,8 +1,8 @@
 import time
 from typing import Optional
-
 from classifier_functions import classify_read_top_hit
-
+from functools import partial
+from multiprocessing import Pool
 import pickle
 
 
@@ -53,3 +53,7 @@ def run_full_benchmark(reads: dict, index_path: str, k: int, sample_size: Option
         "reads_per_second": n_reads / classify_elapsed,
         "results": results
     }
+
+def classify_sequence_only(sequence, kmer_index, k):
+    return classify_read_top_hit(sequence, kmer_index, k)
+
