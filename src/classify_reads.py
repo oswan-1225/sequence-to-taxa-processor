@@ -1,6 +1,6 @@
 import argparse
 import pickle
-from fasta_utils import parse_fasta
+from fasta_utils import parse_sequence_file
 from classifier_functions import classify_read_top_hit
 from tqdm import tqdm
 import pandas as pd
@@ -22,7 +22,7 @@ def main():
         kmer_index = pickle.load(f)
     print(f"Loaded index with {len(kmer_index)} k-mers")
 
-    reads = parse_fasta(args.reads)
+    reads = parse_sequence_file(args.reads)
     print(f"Loaded {len(reads)} reads from {args.reads}")
 
     results = []

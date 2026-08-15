@@ -1,7 +1,7 @@
 
 from fasta_utils import parse_fasta
 from fasta_utils import extract_kmers
-from classifier import build_kmer_index
+from classifier_functions import build_kmer_index
 
 def test_parse_fasta_multiple_sequences(tmp_path):
     fake_fasta_content = ">seq1\nACGT\nACGT\n>seq2\nTTTT\n"

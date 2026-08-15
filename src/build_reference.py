@@ -1,6 +1,6 @@
 import argparse
 import os
-from fasta_utils import parse_fasta
+from fasta_utils import parse_sequence_file
 from classifier_functions import build_kmer_index
 import pickle
 
@@ -9,25 +9,28 @@ GENOME_DIR = os.path.join(SCRIPT_DIR, "..", "data", "reference", "genomes") # Pa
 K = 21 # Kmer length
 OUTPUT_FILE = os.path.join(SCRIPT_DIR, "..", "data", "reference", "kmer_index.pkl") # Outputs the k-mer index to a pickle file for later use
 
+VALID_EXTENSIONS = {'.fna', '.fasta', '.fa', '.fastq', '.fq'}
+
 def load_all_genomes(genome_dir: str) -> dict:
     """
-    Loads every .fna file in a given directory into a dictionary of 
-    {species name: sequence}, merging multi-sequence genomes
-    (chromosomes + plasmid} into a one species level key.)
+    Loads every recognized sequence file (FASTA or FASTQ, by extension) in a
+    given directory into a dictionary of {species name: sequence}, merging
+    multi-sequence genomes (chromosomes + plasmid) into a one species-level key.
     """
 
     all_sequences = {}
     for filename in os.listdir(genome_dir):
-        if filename.endswith('fna'):
+        ext = os.path.splitext(filename)[1].lower()
+        if ext in VALID_EXTENSIONS:
             species_name = os.path.splitext(filename)[0]
             file_path = os.path.join(genome_dir, filename)
-            sequences = parse_fasta(file_path)
+            sequences = parse_sequence_file(file_path)
             all_sequences[species_name] = ''.join(sequences.values())
     return all_sequences
 
 def main():
     parser = argparse.ArgumentParser(description="Build a k-mer reference index from a folder of reference genomes.")
-    parser.add_argument("--genome_dir", required=True, help="Path to a folder of reference genome .fna/.fasta files")
+    parser.add_argument("--genome_dir", required=True, help="Path to a folder of reference genome files (.fna/.fasta/.fa/.fastq/.fq)")
     parser.add_argument("--output", required=True, help="Where to save the resulting k-mer index (.pkl)")
     parser.add_argument("--k", type=int, default=21, help="K-mer length (default: 21)")
 

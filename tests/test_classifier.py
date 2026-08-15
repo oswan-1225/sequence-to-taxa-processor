@@ -1,5 +1,5 @@
-from classifier import classify_read_top_hit
-from classifier import build_kmer_index
+from classifier_functions import classify_read_top_hit
+from classifier_functions import build_kmer_index
 
 def test_classify_read_top_hit_clear_match():
     index = build_kmer_index({"species_a": "ACGTACGT", "species_b": "TTTTGGGG"}, k=4)
