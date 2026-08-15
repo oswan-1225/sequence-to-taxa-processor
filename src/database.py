@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import pandas as pd
 
 def create_database(db_path: str) -> None:
     """
@@ -56,3 +57,31 @@ def insert_sample_results(db_path: str, sample_id: str, source: str, results: li
     cursor.executemany("""INSERT INTO classifications (sample_id, read_id, best_match, confidence) VALUES (?, ?, ?, ?)""", classification_rows)
     conn.commit()
     conn.close()
+
+def get_abundance(db_path: str) -> pd.DataFrame:
+    """
+    Retrieve the abundance of each taxon across all samples in the database.
+    
+    Parameters:
+        db_path (str): Path to the SQLite database file.
+    
+    Returns:
+        pd.DataFrame: columns ['sample_id', 'best_match', 'count', 'total', 'percent'] - one row
+                      per (sample, species), with 'total' the sample's classified read count and
+                      'percent' the species' share of that total.
+    """
+    conn = sqlite3.connect(db_path)
+
+    query = """
+        SELECT sample_id, best_match, COUNT(*) AS count
+        FROM classifications
+        WHERE best_match IS NOT NULL
+        GROUP BY sample_id, best_match
+    """
+    df = pd.read_sql_query(query, conn)
+
+    df['total'] = df.groupby('sample_id')['count'].transform('sum')
+    df['percent'] = df['count'] / df['total'] * 100
+
+    conn.close()
+    return df
