@@ -69,7 +69,7 @@ segment (default: 10).
 ### Validated accuracy
 
 Classified 390,381 real Illumina reads (SRA accession SRR10391187, from the
-ZymoBIOMICS D6300 mock community — 8 bacterial species at ~12% each) against
+ZymoBIOMICS D6300 mock community with 8 bacterial species at ~12% each) against
 an 8-species reference index (k=21, 30.5M k-mers):
 
 - All 8 expected species correctly detected, no phantom species
