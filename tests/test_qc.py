@@ -1,4 +1,4 @@
-from qc import gc_content, gc_zscores, flag_gc_outliers, gc_outlier_warnings, per_read_gc_content
+from qc import gc_content, gc_zscores, flag_gc_outliers, gc_outlier_warnings, per_read_gc_content, reads_in_gc_range
 
 
 def test_gc_content_all_gc():
@@ -89,3 +89,30 @@ def test_per_read_gc_content_maps_each_read():
 
 def test_per_read_gc_content_empty_dict_returns_empty():
     assert per_read_gc_content({}) == {}
+
+
+def test_reads_in_gc_range_exact_match_counted_at_zero_sds():
+    # n_sds=0 collapses the window to a single point (target_gc, target_gc),
+    # so only an exact GC% match should count.
+    reads = {"a": "GCGC", "b": "ATAT", "c": "GCAT"}  # gc: 100.0, 0.0, 50.0
+    assert reads_in_gc_range(reads, target_gc=50.0, n_sds=0.0) == 1
+
+
+def test_reads_in_gc_range_empty_dict_returns_zero():
+    assert reads_in_gc_range({}, target_gc=50.0, n_sds=2.0) == 0
+
+
+def test_reads_in_gc_range_skips_empty_sequence():
+    assert reads_in_gc_range({"a": ""}, target_gc=50.0, n_sds=2.0) == 0
+
+
+def test_reads_in_gc_range_uses_each_reads_own_length():
+    # Both reads are 75.0% GC, target is 50.0%, n_sds=1.0.
+    # short (n=4): sd = sqrt(50*50/4) = 25 -> window [25, 75] -> 75 is in range.
+    # long (n=100): sd = sqrt(50*50/100) = 5 -> window [45, 55] -> 75 is out of range.
+    # Same GC%, same target, same n_sds - only the read's own length differs.
+    reads = {
+        "short": "G" * 3 + "A" * 1,
+        "long": "G" * 75 + "A" * 25,
+    }
+    assert reads_in_gc_range(reads, target_gc=50.0, n_sds=1.0) == 1

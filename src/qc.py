@@ -101,3 +101,36 @@ def per_read_gc_content(reads: dict) -> dict:
     dict: {read_id: GC content percentage}.
     """
     return {read_id: gc_content(seq) for read_id, seq in reads.items()}
+
+def reads_in_gc_range(reads: dict, target_gc: float, n_sds: float) -> int:
+    """
+    Count how many reads have GC content consistent with having been sampled
+    from a genome with GC content target_gc, allowing for binomial sampling
+    noise: a read of length n is a small random sample of its source genome,
+    so its own GC% naturally scatters around the true genome GC% with
+    SD = sqrt(target_gc * (100 - target_gc) / n). Each read uses its own
+    length, so the tolerance window is wider for shorter reads and narrower
+    for longer ones - not one fixed window shared by every read.
+
+    Parameters:
+    reads (dict): {read_id: sequence} for all reads in a FASTA/FASTQ file.
+    target_gc (float): Target genome GC content percentage to compare against.
+    n_sds (float): Number of standard deviations from target_gc to allow.
+
+    Returns:
+    int: Count of reads within the specified GC content range.
+    """
+    count = 0
+    for sequence in reads.values():
+        n = len(sequence)
+        if n == 0:
+            continue
+
+        sd = (target_gc * (100 - target_gc) / n) ** 0.5
+        lower_bound = target_gc - n_sds * sd
+        upper_bound = target_gc + n_sds * sd
+
+        if lower_bound <= gc_content(sequence) <= upper_bound:
+            count += 1
+
+    return count
