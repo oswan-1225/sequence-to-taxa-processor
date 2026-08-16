@@ -4,11 +4,6 @@ from fasta_utils import parse_sequence_file
 from classifier_functions import build_kmer_index
 import pickle
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-GENOME_DIR = os.path.join(SCRIPT_DIR, "..", "data", "reference", "genomes") # Path to the directory containing the genome .fna files
-K = 21 # Kmer length
-OUTPUT_FILE = os.path.join(SCRIPT_DIR, "..", "data", "reference", "kmer_index.pkl") # Outputs the k-mer index to a pickle file for later use
-
 VALID_EXTENSIONS = {'.fna', '.fasta', '.fa', '.fastq', '.fq'}
 
 def load_all_genomes(genome_dir: str) -> dict:
