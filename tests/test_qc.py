@@ -1,4 +1,5 @@
-from qc import gc_content, gc_zscores, flag_gc_outliers, gc_outlier_warnings, per_read_gc_content, reads_in_gc_range
+from qc import (gc_content, gc_zscores, flag_gc_outliers, gc_outlier_warnings, per_read_gc_content,
+                reads_in_gc_range, mean_phred_quality, per_read_mean_quality, filter_low_quality_reads)
 
 
 def test_gc_content_all_gc():
@@ -116,3 +117,43 @@ def test_reads_in_gc_range_uses_each_reads_own_length():
         "long": "G" * 75 + "A" * 25,
     }
     assert reads_in_gc_range(reads, target_gc=50.0, n_sds=1.0) == 1
+
+
+def test_mean_phred_quality_known_values():
+    # Phred+33: ord('I')=73 -> Q40, ord('!')=33 -> Q0
+    assert mean_phred_quality("IIII") == 40.0
+    assert mean_phred_quality("!!!!") == 0.0
+
+
+def test_mean_phred_quality_mixed_scores():
+    assert mean_phred_quality("II!!") == 20.0
+
+
+def test_mean_phred_quality_empty_string():
+    assert mean_phred_quality("") == 0.0
+
+
+def test_per_read_mean_quality_maps_each_read():
+    result = per_read_mean_quality({"a": "IIII", "b": "!!!!"})
+    assert result == {"a": 40.0, "b": 0.0}
+
+
+def test_per_read_mean_quality_empty_dict_returns_empty():
+    assert per_read_mean_quality({}) == {}
+
+
+def test_filter_low_quality_reads_drops_below_threshold():
+    reads = {"a": "ACGT", "b": "TTTT"}
+    qualities = {"a": "IIII", "b": "!!!!"}  # mean quality 40.0 and 0.0
+    assert filter_low_quality_reads(reads, qualities, min_quality=20.0) == {"a": "ACGT"}
+
+
+def test_filter_low_quality_reads_boundary_is_inclusive():
+    reads = {"a": "ACGT"}
+    qualities = {"a": "IIII"}  # mean quality exactly 40.0
+    assert filter_low_quality_reads(reads, qualities, min_quality=40.0) == {"a": "ACGT"}
+
+
+def test_filter_low_quality_reads_missing_quality_entry_excluded():
+    reads = {"a": "ACGT"}
+    assert filter_low_quality_reads(reads, {}, min_quality=20.0) == {}

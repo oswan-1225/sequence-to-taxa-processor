@@ -49,6 +49,34 @@ def test_classify_file_writes_expected_csv(tmp_path):
     assert by_read.loc["read3", "confidence"] == 0.0
 
 
+def test_classify_file_min_quality_drops_low_quality_reads(tmp_path):
+    index_path = make_index(tmp_path)
+    reads_path = tmp_path / "reads.fastq"
+    with open(reads_path, "w") as f:
+        f.write("@read1\nACGTACGTACGT\n+\nIIIIIIIIIIII\n")  # mean Q40 - kept
+        f.write("@read2\nTTTTGGGGTTTT\n+\n!!!!!!!!!!!!\n")  # mean Q0 - dropped
+    output_path = tmp_path / "results.csv"
+
+    results_df = classify_file(index_path, str(reads_path), k=4, output_path=str(output_path),
+                                min_quality=20.0)
+
+    assert set(results_df["read_id"]) == {"read1"}
+
+
+def test_classify_file_min_quality_rejects_fasta_input(tmp_path):
+    index_path = make_index(tmp_path)
+    reads_path = tmp_path / "reads.fasta"
+    write_fasta(reads_path, [("read1", "ACGTACGTACGT")])
+    output_path = tmp_path / "results.csv"
+
+    try:
+        classify_file(index_path, str(reads_path), k=4, output_path=str(output_path), min_quality=20.0)
+    except ValueError as e:
+        assert "FASTQ" in str(e)
+    else:
+        assert False, "Expected ValueError for min_quality on FASTA input"
+
+
 def test_classify_file_populates_database(tmp_path):
     index_path = make_index(tmp_path)
     reads_path = tmp_path / "SRR000001_1.fastq"

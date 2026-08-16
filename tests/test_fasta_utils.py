@@ -1,5 +1,6 @@
 
 from fasta_utils import parse_fasta
+from fasta_utils import parse_fastq_qualities
 from fasta_utils import extract_kmers
 from classifier_functions import build_kmer_index
 
@@ -87,6 +88,25 @@ def test_extract_kmers_k_equals_one():
     result = extract_kmers(sequence, k)
     
     assert result == expected_kmers
+
+def test_parse_fastq_qualities_maps_each_read(tmp_path):
+    fake_fastq_content = "@read1\nACGT\n+\nIIII\n@read2\nTTTT\n+\n!!!!\n"
+    fastq_file = tmp_path / "test.fastq"
+    fastq_file.write_text(fake_fastq_content)
+
+    result = parse_fastq_qualities(str(fastq_file))
+
+    assert result == {"read1": "IIII", "read2": "!!!!"}
+
+
+def test_parse_fastq_qualities_empty_file(tmp_path):
+    fastq_file = tmp_path / "test.fastq"
+    fastq_file.write_text("")
+
+    result = parse_fastq_qualities(str(fastq_file))
+
+    assert result == {}
+
 
 def test_build_kmer_index_deduplicates():
     sequences = {

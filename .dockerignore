@@ -1,0 +1,16 @@
+# Mirrors .gitignore's split: tracked reference genomes are baked into the
+# image (COPY'd explicitly in the Dockerfile); everything gitignored here
+# (generated indexes, raw SRA reads, run outputs) is expected to be mounted
+# in as a volume at `docker run` time instead.
+.git/
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+.vscode/
+CLAUDE.md
+
+results/
+*.pkl
+data/raw/sra_reads/
+tests/

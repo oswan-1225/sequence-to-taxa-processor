@@ -73,7 +73,37 @@ def parse_fastq(filepath: str) -> dict:
             sequences[read_id] = sequence
     return sequences
 
-    
+
+def parse_fastq_qualities(filepath: str) -> dict:
+    """
+    Parses a FASTQ file's quality lines into a dict of {read_id: quality_string}.
+    Companion to parse_fastq(), which parses the same file's sequences but
+    discards quality - kept as a separate function (rather than changing
+    parse_fastq's return shape) so every existing caller of parse_fastq /
+    parse_sequence_file is unaffected.
+
+    Parameters:
+        filepath: path to a .fastq file
+
+    Returns:
+        dict: {read_id: quality_string} - the raw ASCII quality line,
+            Phred+33 encoded (see qc.mean_phred_quality for decoding).
+    """
+    qualities = {}
+    with open(filepath) as f:
+        while True:
+            header = f.readline().strip()
+            if not header:
+                break # End of file
+            f.readline() # Skip the sequence line
+            f.readline() # Skip the '+' line
+            quality = f.readline().strip()
+
+            read_id = header[1:] # remove '@' from header
+            qualities[read_id] = quality
+    return qualities
+
+
 def parse_sequence_file(filepath: str) -> dict:
     """
     Parse a sequence file (FASTA or FASTQ)

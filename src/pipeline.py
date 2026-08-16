@@ -15,7 +15,7 @@ from visualization import plot_species_abundance
 
 def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
                   index: Optional[str] = None, source: Optional[str] = None, top_n: int = 10,
-                  skip_plot: bool = False) -> dict:
+                  skip_plot: bool = False, min_quality: Optional[float] = None) -> dict:
     """
     Run the full build -> classify -> diversity -> plot pipeline for a single
     read file, writing every output into output_dir.
@@ -41,6 +41,9 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
         top_n: number of species to plot individually before collapsing the
             rest into "Other".
         skip_plot: if True, skip the plotting stage entirely.
+        min_quality: if given, drop reads whose mean Phred quality score is
+            below this threshold before classifying (FASTQ input only - see
+            classify_reads.classify_file / qc.filter_low_quality_reads).
 
     Returns:
         dict: paths to the outputs actually produced. Keys: "index",
@@ -99,7 +102,8 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
     db_path = os.path.join(output_dir, "classifications.db")
     source_name: str = source if source is not None else ""
     try:
-        classify_file(index_path, reads, k, csv_path, db_path=db_path, source=source_name)
+        classify_file(index_path, reads, k, csv_path, db_path=db_path, source=source_name,
+                      min_quality=min_quality)
     except Exception as e:
         raise RuntimeError(f"Stage 2 (classify reads) failed: {e}") from e
     outputs["classifications_csv"] = csv_path
@@ -146,11 +150,15 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
 @click.option("--top-n", type=int, default=10,
               help="Number of species to plot individually before collapsing the rest into 'Other' (default: 10).")
 @click.option("--skip-plot", is_flag=True, default=False, help="Skip the plotting stage.")
-def main(genome_dir, reads, output_dir, k, index, source, top_n, skip_plot):
+@click.option("--min-quality", type=float, default=None,
+              help="Minimum mean Phred quality score to keep a read (FASTQ input only). "
+                   "Reads below this are dropped before classification.")
+def main(genome_dir, reads, output_dir, k, index, source, top_n, skip_plot, min_quality):
     """Run the full build -> classify -> diversity -> plot pipeline in one command."""
     try:
         outputs = run_pipeline(genome_dir, reads, output_dir, k=k, index=index,
-                                source=source, top_n=top_n, skip_plot=skip_plot)
+                                source=source, top_n=top_n, skip_plot=skip_plot,
+                                min_quality=min_quality)
     except (ValueError, RuntimeError) as e:
         raise click.ClickException(str(e))
 

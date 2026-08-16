@@ -1,17 +1,26 @@
 import argparse
 import pickle
-from fasta_utils import parse_sequence_file
+from typing import Optional
+from fasta_utils import parse_sequence_file, parse_fastq_qualities
 from classifier_functions import classify_read_top_hit
+from qc import filter_low_quality_reads
 from tqdm import tqdm
 import pandas as pd
 from pathlib import Path
 from database import insert_sample_results, create_database
 
-def classify_file(index_path: str, reads_path: str, k: int, output_path: str, db_path: str = None, source: str = None) -> pd.DataFrame:
+def classify_file(index_path: str, reads_path: str, k: int, output_path: str, db_path: str = None,
+                   source: str = None, min_quality: Optional[float] = None) -> pd.DataFrame:
     """
     Classify every read in reads_path against a saved k-mer index, save the
     results to output_path (.csv), and optionally insert them into a
     classification database.
+
+    Parameters:
+        min_quality: if given, drop reads whose mean Phred quality score is
+            below this threshold before classifying (see
+            qc.filter_low_quality_reads). Requires a FASTQ input - raises
+            ValueError if reads_path is FASTA (no quality scores present).
 
     Returns:
         pd.DataFrame: one row per read (read_id, best_match, confidence) -
@@ -23,6 +32,17 @@ def classify_file(index_path: str, reads_path: str, k: int, output_path: str, db
 
     reads = parse_sequence_file(reads_path)
     print(f"Loaded {len(reads)} reads from {reads_path}")
+
+    if min_quality is not None:
+        with open(reads_path) as f:
+            first_char = f.read(1)
+        if first_char != '@':
+            raise ValueError("--min-quality filtering requires a FASTQ input "
+                              "(quality scores aren't present in FASTA files).")
+        qualities = parse_fastq_qualities(reads_path)
+        before = len(reads)
+        reads = filter_low_quality_reads(reads, qualities, min_quality)
+        print(f"Quality filter (min_quality={min_quality}): kept {len(reads)}/{before} reads")
 
     results = []
     for read_name, read_seq in tqdm(reads.items(), desc="Classifying reads"):
@@ -53,10 +73,13 @@ def main():
     parser.add_argument("--output", required=True, help="Path to save classification results (.csv)")
     parser.add_argument("--db", required=False, help="Path to the SQLite database file")
     parser.add_argument("--source", required=False, help="Source of the sample (e.g., 'SRA', 'local') for database entry")
+    parser.add_argument("--min-quality", type=float, required=False, default=None,
+                         help="Minimum mean Phred quality score to keep a read (FASTQ input only). "
+                              "Reads below this are dropped before classification.")
 
     args = parser.parse_args()
 
-    classify_file(args.index, args.reads, args.k, args.output, args.db, args.source)
+    classify_file(args.index, args.reads, args.k, args.output, args.db, args.source, args.min_quality)
 
 if __name__ == "__main__":
     main()
