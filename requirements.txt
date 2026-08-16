@@ -1,5 +1,6 @@
 pandas
 tqdm
+matplotlib
 
 # dev
 pytest
