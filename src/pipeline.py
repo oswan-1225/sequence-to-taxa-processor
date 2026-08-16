@@ -1,5 +1,6 @@
 import os
 import pickle
+from typing import Optional
 
 import click
 
@@ -12,7 +13,7 @@ from visualization import plot_species_abundance
 
 
 def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
-                  index: str = None, source: str = None, top_n: int = 10,
+                  index: Optional[str] = None, source: Optional[str] = None, top_n: int = 10,
                   skip_plot: bool = False) -> dict:
     """
     Run the full build -> classify -> diversity -> plot pipeline for a single
