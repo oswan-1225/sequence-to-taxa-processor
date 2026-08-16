@@ -40,11 +40,19 @@ python src/classify_reads.py \
 SQLite database (see `src/database.py`) for cross-sample abundance queries.
 
 Summarize per-sample diversity (species richness, Shannon index) from that
-database:
+database, optionally saving a species-abundance-by-sample chart:
 
 ```bash
-python src/diversity_report.py --db results.db --output diversity.csv
+python src/diversity_report.py \
+  --db results.db \
+  --output diversity.csv \
+  --plot abundance.png \
+  --top-n 10
 ```
+
+`--plot`/`--top-n` are optional; `--top-n` controls how many species are
+plotted individually before the rest are collapsed into a single "Other"
+segment (default: 10).
 
 ### How it works
 
@@ -93,12 +101,14 @@ sequence-to-taxa-processor/
 │   ├── diversity_report.py     # CLI: per-sample diversity report from the DB
 │   ├── benchmark.py            # end-to-end performance benchmark
 │   ├── database.py             # SQLite storage + abundance queries
-│   └── diversity.py            # species richness, Shannon diversity
+│   ├── diversity.py            # species richness, Shannon diversity
+│   └── visualization.py        # species-abundance-by-sample chart
 ├── data/
 │   ├── reference/Genomes/      # example reference genomes (ZymoBIOMICS)
 │   └── raw/sra_reads/          # example real read data (gitignored)
 ├── tests/                      # pytest suite (fasta_utils, classifier,
-│                                #   database, diversity, build_reference)
+│                                #   database, diversity, build_reference,
+│                                #   classify_reads, visualization)
 └── requirements.txt
 ```
 
@@ -106,9 +116,11 @@ sequence-to-taxa-processor/
 
 - **Done**: core k-mer classifier, real FASTA/FASTQ parsing, SQLite storage
   with per-sample abundance queries, diversity metrics (species richness,
-  Shannon index), CI running the test suite on every push.
+  Shannon index), a species-abundance-by-sample visualization, CI running
+  the test suite on every push.
 - **Not yet started**: Nextflow workflow orchestration, Docker
-  containerization, cloud deployment, and polished demo notebooks.
+  containerization, cloud deployment, polished demo notebooks, and a
+  unified one-command CLI.
 
 ### Validation dataset
 
