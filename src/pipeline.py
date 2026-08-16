@@ -9,6 +9,7 @@ from classifier_functions import build_kmer_index
 from classify_reads import classify_file
 from database import get_abundance
 from diversity import diversity_by_sample
+from qc import gc_content, gc_outlier_warnings
 from visualization import plot_species_abundance
 
 
@@ -23,8 +24,12 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
     failure is re-raised as a RuntimeError naming which stage failed.
 
     Parameters:
-        genome_dir: folder of reference genomes, passed to load_all_genomes.
-            Required unless index is given.
+        genome_dir: folder of reference genomes. Required unless index is
+            given. If provided (with or without index), it's also used to
+            check reference genomes for GC-content outliers, regardless of
+            whether it's needed to build the index - loading genome
+            sequences is cheap relative to building the k-mer index, so this
+            check runs even when an existing index is reused.
         reads: path to a FASTA/FASTQ file of reads to classify.
         output_dir: folder to write all pipeline outputs into (created if
             missing).
@@ -39,14 +44,36 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
 
     Returns:
         dict: paths to the outputs actually produced. Keys: "index",
-            "classifications_csv", "database", "diversity_csv", and "plot"
-            (omitted if skip_plot is True).
+            "classifications_csv", "database", "diversity_csv",
+            "species_abundance_csv", and "plot" (omitted if skip_plot is
+            True). species_abundance_csv is get_abundance()'s per-(sample,
+            species) breakdown with an added "gc_warning" column (NaN
+            unless genome_dir was given and that species was flagged as a
+            GC outlier - see qc.gc_outlier_warnings).
     """
     if not index and not genome_dir:
         raise ValueError("Either --index or --genome-dir must be provided.")
 
     os.makedirs(output_dir, exist_ok=True)
     outputs = {}
+    gc_warnings = {}
+    genomes = None
+
+    if genome_dir:
+        click.echo("Checking reference genome GC content...")
+        try:
+            genomes = load_all_genomes(genome_dir)
+        except Exception as e:
+            raise RuntimeError(f"Stage 1 (load genomes) failed: {e}") from e
+        gc_by_species = {species: gc_content(seq) for species, seq in genomes.items()}
+        gc_warnings = gc_outlier_warnings(gc_by_species)
+        if gc_warnings:
+            for species, message in gc_warnings.items():
+                click.echo(f"  Warning ({species}): {message}")
+        else:
+            click.echo("  No GC outliers detected in reference set.")
+    else:
+        click.echo("Skipping GC bias check (no --genome-dir given).")
 
     if index:
         if not os.path.exists(index):
@@ -55,8 +82,9 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
         click.echo(f"Reusing existing index: {index_path}")
     else:
         click.echo("Stage 1/4: building k-mer index...")
+        if genomes is None:
+            raise ValueError("--genome-dir is required when --index is not given.")
         try:
-            genomes = load_all_genomes(genome_dir)
             kmer_index = build_kmer_index(genomes, k)
             index_path = os.path.join(output_dir, "kmer_index.pkl")
             with open(index_path, 'wb') as f:
@@ -69,8 +97,9 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
     click.echo("Stage 2/4: classifying reads...")
     csv_path = os.path.join(output_dir, "classifications.csv")
     db_path = os.path.join(output_dir, "classifications.db")
+    source_name: str = source if source is not None else ""
     try:
-        classify_file(index_path, reads, k, csv_path, db_path=db_path, source=source)
+        classify_file(index_path, reads, k, csv_path, db_path=db_path, source=source_name)
     except Exception as e:
         raise RuntimeError(f"Stage 2 (classify reads) failed: {e}") from e
     outputs["classifications_csv"] = csv_path
@@ -78,13 +107,18 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
 
     click.echo("Stage 3/4: computing diversity metrics...")
     diversity_csv_path = os.path.join(output_dir, "diversity_report.csv")
+    species_abundance_path = os.path.join(output_dir, "species_abundance.csv")
     try:
         abundance_df = get_abundance(db_path)
+        abundance_df["gc_warning"] = abundance_df["best_match"].map(gc_warnings)
+        abundance_df.to_csv(species_abundance_path, index=False)
+
         diversity_df = diversity_by_sample(abundance_df)
         diversity_df.to_csv(diversity_csv_path, index=False)
     except Exception as e:
         raise RuntimeError(f"Stage 3 (diversity report) failed: {e}") from e
     outputs["diversity_csv"] = diversity_csv_path
+    outputs["species_abundance_csv"] = species_abundance_path
     click.echo(diversity_df.to_string(index=False))
 
     if not skip_plot:
@@ -101,7 +135,8 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
 
 @click.command()
 @click.option("--genome-dir", default=None,
-              help="Folder of reference genomes to build a new index from. Required unless --index is given.")
+              help="Folder of reference genomes. Required unless --index is given; also enables the GC-content "
+                   "outlier check even when --index is given (skipped if omitted).")
 @click.option("--reads", required=True, help="Path to a FASTA/FASTQ file of reads to classify.")
 @click.option("--output-dir", required=True, help="Folder to write all pipeline outputs into.")
 @click.option("--k", type=int, default=21, help="K-mer length (default: 21).")

@@ -1,6 +1,7 @@
 import os
 import pickle
 
+import pandas as pd
 import pytest
 
 from classifier_functions import build_kmer_index
@@ -37,7 +38,9 @@ def test_run_pipeline_produces_all_expected_outputs(tmp_path):
 
     outputs = run_pipeline(genome_dir, reads_path, str(output_dir), k=4)
 
-    assert set(outputs.keys()) == {"index", "classifications_csv", "database", "diversity_csv", "plot"}
+    assert set(outputs.keys()) == {
+        "index", "classifications_csv", "database", "diversity_csv", "species_abundance_csv", "plot"
+    }
     for path in outputs.values():
         assert os.path.exists(path)
 
