@@ -114,6 +114,6 @@ sequence-to-taxa-processor/
 
 Validation (not core to the tool) uses the **ZymoBIOMICS Microbial Community
 Standard (D6300)**, a commercially defined mock community with known
-composition — BioProject PRJNA587452, SRA accession SRR10391187. Reference
+composition BioProject PRJNA587452, SRA accession SRR10391187. Reference
 genomes for its 8 bacterial species are committed under
 `data/reference/Genomes/`.
