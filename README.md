@@ -16,43 +16,44 @@ pip install -r requirements.txt
 
 ### Quickstart
 
-Build a k-mer reference index from a folder of reference genomes:
+`src/pipeline.py` is the recommended entry point. It chains
+build -> classify -> diversity -> plot in one command, and stops at the
+first stage that fails instead of continuing on bad output:
 
 ```bash
-python src/build_reference.py \
-  --genome_dir data/reference/Genomes \
-  --output data/reference/kmer_index.pkl \
-  --k 21
-```
-
-Classify a read file against that index:
-
-```bash
-python src/classify_reads.py \
-  --index data/reference/kmer_index.pkl \
+python src/pipeline.py \
+  --genome-dir data/reference/Genomes \
   --reads path/to/reads.fastq \
-  --output results.csv \
-  --db results.db \
+  --output-dir results/ \
+  --k 21 \
   --source SRA
 ```
 
-`--db`/`--source` are optional; when given, results are also written to a
-SQLite database (see `src/database.py`) for cross-sample abundance queries.
+Everything it produces (index, classifications CSV, SQLite database,
+diversity report, species-abundance CSV, abundance plot) lands in
+`--output-dir`. A few flags worth knowing about:
 
-Summarize per-sample diversity (species richness, Shannon index) from that
-database, optionally saving a species-abundance-by-sample chart:
+- `--index path/to/kmer_index.pkl` reuses an existing index instead of
+  rebuilding it. It's independent of `--genome-dir`. If you pass both,
+  the genomes still get loaded for the GC-outlier check below, they just
+  aren't used to rebuild the index.
+- `--min-quality 20` drops FASTQ reads whose mean Phred quality (Phred+33)
+  is below the threshold before classifying. FASTQ only, it'll raise if
+  you use it on a FASTA file.
+- `--top-n 10` controls how many species get plotted individually before
+  the rest collapse into "Other" (default: 10).
+- `--skip-plot` skips the plotting stage.
 
-```bash
-python src/diversity_report.py \
-  --db results.db \
-  --output diversity.csv \
-  --plot abundance.png \
-  --top-n 10
-```
+If `--genome-dir` is given, those reference genomes also get checked for
+GC-content outliers (`src/qc.py`). You'll see a warning if a species'
+genome GC% is a statistical outlier relative to the rest of the reference
+set, since that's a plausible contributor to abundance skew (see
+"Validated accuracy" below).
 
-`--plot`/`--top-n` are optional; `--top-n` controls how many species are
-plotted individually before the rest are collapsed into a single "Other"
-segment (default: 10).
+Each stage still works standalone if you want more control over an
+individual step: `src/build_reference.py`, `src/classify_reads.py`
+(also takes `--min-quality`), and `src/diversity_report.py`. Run any of
+them with `--help` for their options.
 
 ### How it works
 
@@ -89,6 +90,21 @@ isolation) on the 390,381-read / 30.5M-k-mer benchmark above:
 
 See `src/benchmark.py`.
 
+### Docker
+
+A `Dockerfile` is included (`python:3.13-slim`, entrypoint wraps
+`pipeline.py`, reference genomes baked into the image). It hasn't been
+built or run yet, so treat it as written but unverified rather than a
+tested path:
+
+```bash
+docker build -t sequence-to-taxa-processor .
+docker run --rm -v ${PWD}/results:/app/results sequence-to-taxa-processor \
+  --genome-dir data/reference/Genomes \
+  --reads /app/reads.fastq \
+  --output-dir /app/results
+```
+
 ### Repo structure
 
 ```
@@ -102,13 +118,16 @@ sequence-to-taxa-processor/
 │   ├── benchmark.py            # end-to-end performance benchmark
 │   ├── database.py             # SQLite storage + abundance queries
 │   ├── diversity.py            # species richness, Shannon diversity
-│   └── visualization.py        # species-abundance-by-sample chart
+│   ├── qc.py                   # GC-outlier check, read quality filtering
+│   ├── visualization.py        # species-abundance-by-sample chart
+│   └── pipeline.py             # CLI: unified build->classify->diversity->plot
 ├── data/
 │   ├── reference/Genomes/      # example reference genomes (ZymoBIOMICS)
 │   └── raw/sra_reads/          # example real read data (gitignored)
 ├── tests/                      # pytest suite (fasta_utils, classifier,
-│                                #   database, diversity, build_reference,
-│                                #   classify_reads, visualization)
+│                                #   database, diversity, qc, build_reference,
+│                                #   classify_reads, visualization, pipeline)
+├── Dockerfile                  # containerized pipeline.py entrypoint
 └── requirements.txt
 ```
 
@@ -116,11 +135,12 @@ sequence-to-taxa-processor/
 
 - **Done**: core k-mer classifier, real FASTA/FASTQ parsing, SQLite storage
   with per-sample abundance queries, diversity metrics (species richness,
-  Shannon index), a species-abundance-by-sample visualization, CI running
-  the test suite on every push.
-- **Not yet started**: Nextflow workflow orchestration, Docker
-  containerization, cloud deployment, polished demo notebooks, and a
-  unified one-command CLI.
+  Shannon index), GC-outlier and read-quality QC (`qc.py`), a
+  species-abundance-by-sample visualization, a unified `pipeline.py` CLI,
+  CI running the test suite on every push.
+- **Written but unverified**: Docker containerization (see above).
+- **Not yet started**: Nextflow workflow orchestration, cloud deployment,
+  polished demo notebooks.
 
 ### Validation dataset
 
