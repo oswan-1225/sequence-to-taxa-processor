@@ -2,7 +2,7 @@
 
 A from-scratch metagenomic taxonomic classifier: given raw DNA sequencing
 reads (FASTA/FASTQ) and a set of reference genomes, classify each read to
-its most likely species of origin using k-mer matching all in python
+its most likely species of origin using k-mer matching all in Python.
 
 The tool is general-purpose and bring-your-own-data: point it at any folder
 of reference genomes and any read file via CLI arguments. It does not
