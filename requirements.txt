@@ -2,5 +2,6 @@ pandas
 tqdm
 matplotlib
 numpy
+click
 # dev
 pytest
