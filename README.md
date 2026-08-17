@@ -79,6 +79,18 @@ an 8-species reference index (k=21, 30.5M k-mers):
   each) — deviations are explainable by genome size, GC content/sequencing
   bias, and ambiguous k-mer vote-sharing, not unexplained noise
 
+### Validation graphic
+
+![Classified vs. expected abundance for each species in the ZymoBIOMICS mock community](docs/abundance_validation.png)
+
+Same validation run as above, plotted against the known ground truth. This
+simply validates the tool's accuracy, it isn't a core component of the
+pipeline. It only works because ZymoBIOMICS publishes an expected
+composition to compare against, which your own data won't have.
+Regenerate it after a fresh classification run with
+`python scripts/plot_zymobiomics_validation.py` (dataset-specific, same
+pattern as `scripts/investigate_pseudomonas_gc.py`).
+
 ### Performance baseline
 
 End-to-end timing (index load + classification, not just classification in
@@ -127,6 +139,7 @@ sequence-to-taxa-processor/
 ├── tests/                      # pytest suite (fasta_utils, classifier,
 │                                #   database, diversity, qc, build_reference,
 │                                #   classify_reads, visualization, pipeline)
+├── docs/                       # static assets referenced by this README
 ├── Dockerfile                  # containerized pipeline.py entrypoint
 └── requirements.txt
 ```

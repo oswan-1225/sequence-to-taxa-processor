@@ -1,5 +1,5 @@
 """
-One-off investigation (commit 3): is Pseudomonas aeruginosa's low classified
+One-off investigation: is Pseudomonas aeruginosa's low classified
 abundance (4.9% vs. ~12% expected) explained by raw-read undersequencing
 consistent with its GC-atypical genome (66%+ GC, a real outlier among the
 8 ZymoBIOMICS reference genomes - see src/qc.py's gc_zscores), or does it
