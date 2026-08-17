@@ -7,8 +7,10 @@ Dataset-specific - the ~12.5%-each expected values are Zymo's published
 composition for this one commercial reference standard, which is why this
 lives here and not in src/visualization.py (general plotting code takes
 observed/expected as plain arguments; it doesn't know "Zymo" from any
-other dataset). See scripts/investigate_pseudomonas_gc.py for the same
-pattern.
+other dataset). Lives in docs/ alongside the image it generates
+(abundance_validation.png, embedded in README.md) rather than scripts/,
+since it's meant to be re-run to refresh that specific portfolio asset,
+not a disposable diagnostic.
 """
 import os
 import sys
