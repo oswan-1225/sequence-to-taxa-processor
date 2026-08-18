@@ -103,11 +103,11 @@ number varies a lot between species:
 (Source: [Zymo's D6300 datasheet](https://files.zymoresearch.com/protocols/_d6300_zymobiomics_microbial_community_standard.pdf),
 Table 1. "16S Only" is copy-number-adjusted for standard bacterial 16S
 primers, which is why the yeasts show `NA`, not `0%`; those primers don't
-amplify fungal rRNA at all.)
+amplify fungal rRNA at all. These represent theoretical ideal yields from 16S.)
 
 Winner-take-all classification (each read's full weight goes to its best
 match) lands within 14.9% mean relative deviation of that target across
-the 8 bacteria. The two yeasts are basically invisible in this data, which is intentional.  
+the 8 bacteria (Zymo's own protocol states <15% relative abundance deviation). The two yeasts are basically invisible in this data, which is intentional.  
 Bacterial 16S primers don't pick up fungal
 rRNA, and Zymo's own 16S numbers list the yeasts as not applicable. Our
 observed 0.06% and 0.23% line up with that.
