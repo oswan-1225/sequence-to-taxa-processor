@@ -83,8 +83,8 @@ Classified 390,381 real Illumina reads (SRA accession SRR10391187) against a
 10-species ZymoBIOMICS D6300 reference index (k=21, 68.66M k-mers).
 
 SRR10391187 is 16S rRNA amplicon sequencing (confirmed via SRA's own run
-metadata), so accuracy here is measured against Zymo's own 16S-adjusted
-theoretical composition, not a flat per-species split, since rRNA copy
+metadata), so accuracy is measured against Zymo's own 16S-adjusted
+theoretical composition, avoiding a flat per-species split, since rRNA copy
 number varies a lot between species:
 
 | Species | Genomic DNA | 16S Only | 16S & 18S |
@@ -102,13 +102,13 @@ number varies a lot between species:
 
 (Source: [Zymo's D6300 datasheet](https://files.zymoresearch.com/protocols/_d6300_zymobiomics_microbial_community_standard.pdf),
 Table 1. "16S Only" is copy-number-adjusted for standard bacterial 16S
-primers, which is why the yeasts show `NA`, not `0%`, those primers don't
+primers, which is why the yeasts show `NA`, not `0%`; those primers don't
 amplify fungal rRNA at all.)
 
 Winner-take-all classification (each read's full weight goes to its best
 match) lands within 14.9% mean relative deviation of that target across
-the 8 bacteria. The two yeasts are basically invisible in this data, and
-that's expected, not a miss: bacterial 16S primers don't pick up fungal
+the 8 bacteria. The two yeasts are basically invisible in this data, which is intentional.  
+Bacterial 16S primers don't pick up fungal
 rRNA, and Zymo's own 16S numbers list the yeasts as not applicable. Our
 observed 0.06% and 0.23% line up with that.
 
@@ -121,23 +121,20 @@ entirely, Zymo's own suggested fix for this kind of ambiguity, throws away
 data almost every read overlaps a region shared across species.
 Winner-take-all wins clearly, so that's the reported method.
 
-All 10 species are detected, no phantoms, 96.1% of reads classified.
-
 ### Validation graphic
 
 ![Observed vs. Zymo's 16S-adjusted expected abundance for each bacterial species in the ZymoBIOMICS mock community](docs/abundance_validation.png)
 
 Same run as above, plotted against Zymo's 16S-adjusted composition. Yeasts
 aren't included, no valid 16S target to compare them against. Not a core
-part of the pipeline either, this only works because Zymo happens to
-publish real ground truth to check against. Regenerate it after a fresh
+part of the pipeline either; this only works because Zymo happens to
+publish real reference data to check against. Regenerate it after a fresh
 classification run with
 `python docs/plot_zymobiomics_validation.py` (dataset-specific).
 
 ### Performance baseline
 
-End-to-end timing (index load + classification, not just classification in
-isolation) on the 390,381-read / 68.66M-k-mer benchmark above:
+End-to-end timing on the 390,381-read / 68.66M-k-mer benchmark above:
 
 - Index load: ~56s
 - Classification: ~68s (~5,700 reads/sec)
@@ -154,7 +151,7 @@ against the 8-species benchmark (see "Validated accuracy" above for the
 full 10-species numbers):
 
 ```bash
-docker build -t sequence-to-taxa-processor .
+docker build -t sequence-to-taxa-processor
 docker run --rm -v ${PWD}/results:/app/results sequence-to-taxa-processor \
   --genome-dir data/reference/Genomes \
   --reads /app/reads.fastq \
