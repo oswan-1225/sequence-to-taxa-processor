@@ -8,6 +8,7 @@ from tqdm import tqdm
 import pandas as pd
 from pathlib import Path
 from database import insert_sample_results, create_database
+from collections import defaultdict
 
 def classify_file(index_path: str, reads_path: str, k: int, output_path: str, db_path: str = None,
                    source: str = None, min_quality: Optional[float] = None) -> pd.DataFrame:
@@ -44,9 +45,17 @@ def classify_file(index_path: str, reads_path: str, k: int, output_path: str, db
         reads = filter_low_quality_reads(reads, qualities, min_quality)
         print(f"Quality filter (min_quality={min_quality}): kept {len(reads)}/{before} reads")
 
+    vote_accumulator = defaultdict(float)
     results = []
+    
     for read_name, read_seq in tqdm(reads.items(), desc="Classifying reads"):
         classification = classify_read_top_hit(read_seq, kmer_index, k)
+        votes = classification['votes']
+        totalvotes = sum(votes.values())
+        if votes:
+            for species, count in votes.items():
+                vote_accumulator[species] += count / totalvotes
+            
         results.append({
             "read_id": read_name,
             "best_match": classification['best_match'],
@@ -55,6 +64,21 @@ def classify_file(index_path: str, reads_path: str, k: int, output_path: str, db
     results_df = pd.DataFrame(results)
     results_df.to_csv(output_path, index=False)
     print(f"Classification results saved to {output_path}")
+
+    total_classified = sum(vote_accumulator.values())
+    if total_classified > 0:
+        output_path_obj = Path(output_path)
+        redistributed_path = output_path_obj.with_name(output_path_obj.stem + "_redistributed.csv")
+        redistributed_df = pd.DataFrame([
+            {
+                "species": species,
+                "estimated_reads": credit,
+                "percentage": credit / total_classified * 100
+            }
+            for species, credit in vote_accumulator.items()
+        ]).sort_values("percentage", ascending=False)
+        redistributed_df.to_csv(redistributed_path, index=False)
+        print(f"Redistributed abundance estimates saved to {redistributed_path}")
 
     if db_path:
         create_database(db_path)

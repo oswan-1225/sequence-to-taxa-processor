@@ -56,6 +56,6 @@ def classify_read_top_hit(read_sequence: str, kmer_index: dict, k: int) -> dict:
     total_kmers = len(extract_kmers(read_sequence, k))
 
     if not classif or total_kmers == 0:
-        return {'best_match': None, 'confidence': 0.0}
+        return {'best_match': None, 'confidence': 0.0, 'votes': classif}
     best_match = max(classif.items(), key=lambda item: item[1])[0]
-    return {'best_match': best_match, 'confidence': classif[best_match] / total_kmers}
+    return {'best_match': best_match, 'confidence': classif[best_match] / total_kmers, 'votes': classif}
