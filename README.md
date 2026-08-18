@@ -116,8 +116,6 @@ entirely, Zymo's own suggested fix for this kind of ambiguity, throws away
 data almost every read overlaps a region shared across species.
 Winner-take-all wins clearly, so that's the reported method.
 
-All 10 species are detected, no phantoms, 96.1% of reads classified.
-
 ### Validation graphic
 
 ![Observed vs. Zymo's 16S-adjusted expected abundance for each bacterial species in the ZymoBIOMICS mock community](docs/abundance_validation.png)
