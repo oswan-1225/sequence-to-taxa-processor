@@ -66,64 +66,87 @@ them with `--help` for their options.
   appear in many genomes by chance (DNA has only 4 letters), making them
   non-discriminating. Real tools like Kraken2 use k in the 21-35 range for
   the same reason.
-- **Splitting votes for better abundance estimates**: alongside the
-  per-read winner-take-all CSV, `classify_reads.py` also splits each
-  read's k-mer votes proportionally across every species it hit, instead
-  of giving the whole read to one winner. See "Validated accuracy" below
-  for the measured effect.
+- **Vote redistribution (experimental)**: alongside the per-read
+  winner-take-all CSV, `classify_reads.py` also splits each read's k-mer
+  votes proportionally across every species it hit, instead of giving the
+  whole read to one winner. See "Validated accuracy" below, it measures
+  worse than winner-take-all on this dataset.
 
 ### Validated accuracy
 
 Classified 390,381 real Illumina reads (SRA accession SRR10391187) against a
-10-species ZymoBIOMICS D6300 reference index (8 bacteria at 12% each, 2
-yeasts at 2% each, k=21, 68.66M k-mers).
+10-species ZymoBIOMICS D6300 reference index (k=21, 68.66M k-mers).
 
-**Redistributed bacterial abundance lands within 12.3% mean relative
-deviation of ground truth, better than [Zymo's own published <15% baseline](https://files.zymoresearch.com/protocols/_d6300_zymobiomics_microbial_community_standard.pdf)
-from their in-house shotgun sequencing.** That's despite SRR10391187 turning
-out to be 16S rRNA amplicon sequencing, not whole-genome shotgun as
-originally assumed. That's more challenging for a whole-genome k-mer
-classifier, since each read only covers a ~588bp PCR-amplified slice of the
-genome rather than a uniform sample of it.
+SRR10391187 is 16S rRNA amplicon sequencing (confirmed via SRA's own run
+metadata), so accuracy here is measured against Zymo's own 16S-adjusted
+theoretical composition, not a flat per-species split, since rRNA copy
+number varies a lot between species:
 
-The two yeasts (Saccharomyces cerevisiae, Cryptococcus neoformans) landed at
-roughly 1/10th to 1/30th of their expected 2% each, and vote-splitting
-barely moved them. Confirmed via SRA metadata: bacteria-targeted 16S
-primers generally don't amplify fungal rRNA, so most yeast DNA was never in
-the sequenced pool to begin with.
+| Species | Genomic DNA | 16S Only | 16S & 18S |
+|---|---|---|---|
+| Pseudomonas aeruginosa | 12% | 4.2% | 3.6% |
+| Escherichia coli | 12% | 10.1% | 8.9% |
+| Salmonella enterica | 12% | 10.4% | 9.1% |
+| Lactobacillus fermentum | 12% | 18.4% | 16.1% |
+| Enterococcus faecalis | 12% | 9.9% | 8.7% |
+| Staphylococcus aureus | 12% | 15.5% | 13.6% |
+| Listeria monocytogenes | 12% | 14.1% | 12.4% |
+| Bacillus subtilis | 12% | 17.4% | 15.3% |
+| Saccharomyces cerevisiae | 2% | NA | 9.3% |
+| Cryptococcus neoformans | 2% | NA | 3.3% |
 
-All 10 species were still correctly detected (no phantoms), 96.1% of reads
-classified.
+(Source: [Zymo's D6300 datasheet](https://files.zymoresearch.com/protocols/_d6300_zymobiomics_microbial_community_standard.pdf),
+Table 1. "16S Only" is copy-number-adjusted for standard bacterial 16S
+primers, which is why the yeasts show `NA`, not `0%`, those primers don't
+amplify fungal rRNA at all.)
+
+Winner-take-all classification (each read's full weight goes to its best
+match) lands within 14.9% mean relative deviation of that target across
+the 8 bacteria. The two yeasts are basically invisible in this data, and
+that's expected, not a miss: bacterial 16S primers don't pick up fungal
+rRNA, and Zymo's own 16S numbers list the yeasts as not applicable. Our
+observed 0.06% and 0.23% line up with that.
+
+Two alternatives were tested and rejected in favor of winner-take-all.
+Proportional vote-share redistribution (splitting a read's credit across
+every species it hits, instead of giving it all to one winner) comes in
+worse, at 27.3% mean deviation. Discarding ambiguous multi-genome reads
+entirely, Zymo's own suggested fix for this kind of ambiguity, throws away
+93.7% of the reads here and still lands at 138.7%, since with 16S amplicon
+data almost every read overlaps a region shared across species.
+Winner-take-all wins clearly, so that's the reported method.
+
+All 10 species are detected, no phantoms, 96.1% of reads classified.
 
 ### Validation graphic
 
-![Redistributed vs. expected abundance for each species in the ZymoBIOMICS mock community](docs/abundance_validation.png)
+![Observed vs. Zymo's 16S-adjusted expected abundance for each bacterial species in the ZymoBIOMICS mock community](docs/abundance_validation.png)
 
-Same validation run as above, plotted against the known ground truth. This
-simply validates the tool's accuracy, it isn't a core component of the
-pipeline. It only works because ZymoBIOMICS publishes an expected
-composition to compare against, which your own data won't have.
-Regenerate it after a fresh classification run with
+Same run as above, plotted against Zymo's 16S-adjusted composition. Yeasts
+aren't included, no valid 16S target to compare them against. Not a core
+part of the pipeline either, this only works because Zymo happens to
+publish real ground truth to check against. Regenerate it after a fresh
+classification run with
 `python docs/plot_zymobiomics_validation.py` (dataset-specific).
 
 ### Performance baseline
 
 End-to-end timing (index load + classification, not just classification in
-isolation) on the 390,381-read / 30.5M-k-mer benchmark above:
+isolation) on the 390,381-read / 68.66M-k-mer benchmark above:
 
-- Index load: ~19–22s
-- Classification: ~56–60s (~6,450–6,940 reads/sec)
-- Total: ~80s
+- Index load: ~56s
+- Classification: ~68s (~5,700 reads/sec)
+- Total: ~134s
 
 See `src/benchmark.py`.
 
 ### Docker
 
 A `Dockerfile` is included (`python:3.13-slim`, entrypoint wraps
-`pipeline.py`, reference genomes baked into the image). Verified: a
-container build reproduces the pipeline's output identically to a
-bare-metal run, on the 8-species pre-redistribution baseline (see
-"Validated accuracy" above for current numbers):
+`pipeline.py`, reference genomes baked into the image). A container build
+reproduces the pipeline's output identically to a bare-metal run, checked
+against the 8-species benchmark (see "Validated accuracy" above for the
+full 10-species numbers):
 
 ```bash
 docker build -t sequence-to-taxa-processor .

@@ -1,16 +1,23 @@
 """
-One-off portfolio graphic: redistributed observed vs. expected per-species
+One-off portfolio graphic: winner-take-all observed vs. expected per-species
 abundance against the ZymoBIOMICS D6300 mock community, built from a
-completed classify_reads.py run's redistributed-abundance CSV.
+completed classify_reads.py run's classifications CSV.
 
-Dataset-specific - the 12%/2% expected values are Zymo's published
-composition for this one commercial reference standard, which is why this
-lives here and not in src/visualization.py (general plotting code takes
-observed/expected as plain arguments; it doesn't know "Zymo" from any
-other dataset). Lives in docs/ alongside the image it generates
-(abundance_validation.png, embedded in README.md) rather than scripts/,
-since it's meant to be re-run to refresh that specific portfolio asset,
-not a disposable diagnostic.
+Dataset-specific - the expected values are Zymo's own published "16S Only"
+composition (rRNA copy number-adjusted per species, not a flat share),
+which is why this lives here and not in src/visualization.py (general
+plotting code takes observed/expected as plain arguments; it doesn't know
+"Zymo" from any other dataset). SRR10391187 is confirmed 16S rRNA amplicon
+sequencing, so this is the theoretical composition Zymo's own
+documentation says to use, not the flat genomic-DNA composition an earlier
+version of this script used. The 2 yeasts are excluded: Zymo's 16S-only
+column lists them as NA (bacteria-targeted 16S primers don't amplify
+fungal rRNA), so there's no valid expected value to plot them against.
+Source: https://files.zymoresearch.com/protocols/_d6300_zymobiomics_microbial_community_standard.pdf
+(Table 1, "16S Only" column). Lives in docs/ alongside the image it
+generates (abundance_validation.png, embedded in README.md) rather than
+scripts/, since it's meant to be re-run to refresh that specific portfolio
+asset, not a disposable diagnostic.
 """
 import os
 import sys
@@ -22,24 +29,22 @@ from matplotlib.figure import Figure
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "src"))
 
-REDISTRIBUTED_CSV_PATH = os.path.join(PROJECT_ROOT, "results", "ten_species_redistribution", "classified_redistributed.csv")
+CLASSIFIED_CSV_PATH = os.path.join(PROJECT_ROOT, "results", "ten_species_redistribution", "classified.csv")
 OUTPUT_PATH = os.path.join(PROJECT_ROOT, "results", "abundance_validation.png")
 
-# 10 species in the ZymoBIOMICS D6300 mock community as of the 2026-08-17
-# yeast reintroduction: 8 bacteria at 12% each + 2 yeasts at 2% each
-# (8*12 + 2*2 = 100) - Zymo's published design, not something the
-# classifier measures, a fact about the reference standard itself.
+# Zymo's published "16S Only" theoretical composition for D6300 (Table 1),
+# rRNA operon copy number-adjusted per species - the correct expected
+# values for 16S targeted sequencing, per Zymo's own footnote on that
+# column. Sums to 100% across these 8 bacteria alone.
 EXPECTED_ABUNDANCE = {
-    "Bacillus_subtilis_complete_genome": 12.0,
-    "Enterococcus_faecalis_complete_genome": 12.0,
-    "Escherichia_coli_complete_genome": 12.0,
-    "Lactobacillus_fermentum_complete_genome": 12.0,
-    "Listeria_monocytogenes_complete_genome": 12.0,
-    "Pseudomonas_aeruginosa_complete_genome": 12.0,
-    "Salmonella_enterica_complete_genome": 12.0,
-    "Staphylococcus_aureus_complete_genome": 12.0,
-    "Cryptococcus_neoformans_complete_genome": 2.0,
-    "Saccharomyces_cerevisiae_complete_genome": 2.0,
+    "Pseudomonas_aeruginosa_complete_genome": 4.2,
+    "Escherichia_coli_complete_genome": 10.1,
+    "Salmonella_enterica_complete_genome": 10.4,
+    "Lactobacillus_fermentum_complete_genome": 18.4,
+    "Enterococcus_faecalis_complete_genome": 9.9,
+    "Staphylococcus_aureus_complete_genome": 15.5,
+    "Listeria_monocytogenes_complete_genome": 14.1,
+    "Bacillus_subtilis_complete_genome": 17.4,
 }
 
 
@@ -72,6 +77,9 @@ def plot_abundance_comparison(observed: dict[str, float], expected: dict[str, fl
     ax.set_yticks(y_positions)
     ax.set_yticklabels([_display_name(s) for s in species])
     ax.invert_yaxis()
+    # Extra top/bottom margin so the first/last row's labels have room
+    # above/below the dot instead of clipping against the x-axis.
+    ax.set_ylim(y_positions[-1] + 0.7, y_positions[0] - 0.7)
 
     # Zebra striping and gridlines behind everything else.
     for y in y_positions[::2]:
@@ -96,21 +104,35 @@ def plot_abundance_comparison(observed: dict[str, float], expected: dict[str, fl
     xmax_val = max(expected_vals + observed_vals) * 1.2
     ax.set_xlim(0, xmax_val)
 
-    # Labels sit above the dot (not left/right) so they never cross the connecting line.
+    # Both dots get direct labels now that Expected varies per species
+    # instead of repeating one flat number. Observed is the actual
+    # measurement, so it's bold and full-size, centered above its dot.
+    # Expected is reference/context, so it's italic, smaller, and lighter,
+    # centered below its own dot - a real size/weight hierarchy instead of
+    # two equally-loud numbers competing for attention.
     for y, o in zip(y_positions, observed_vals):
-        ax.annotate(f"{o:.1f}%", (o, y), xytext=(-2, 9), textcoords="offset points",
-                    va="bottom", ha="left", fontsize=9, color="#52514e")
+        ax.annotate(f"{o:.1f}%", (o, y), xytext=(0, 9), textcoords="offset points",
+                    va="bottom", ha="center", fontsize=9, fontweight="bold", color="#52514e")
+    for y, e in zip(y_positions, expected_vals):
+        ax.annotate(f"{e:.1f}%", (e, y), xytext=(0, -8), textcoords="offset points",
+                    va="top", ha="center", fontsize=8, fontstyle="italic", color="#8a8975")
 
-    mean_abs_dev = sum(abs(o - e) for o, e in zip(observed_vals, expected_vals)) / len(species)
+    mean_rel_dev = sum(abs(o - e) / e for o, e in zip(observed_vals, expected_vals)) / len(species) * 100
     if n_reads is not None:
-        subtitle = f"{n_reads:,} Illumina sequencing reads classified — mean deviation {mean_abs_dev:.1f} percentage points"
+        subtitle = f"{n_reads:,} Illumina sequencing reads classified, mean relative deviation {mean_rel_dev:.1f}%"
     else:
-        subtitle = f"mean deviation {mean_abs_dev:.1f} percentage points from expected"
+        subtitle = f"mean relative deviation {mean_rel_dev:.1f}% from expected"
 
     fig.suptitle(title, fontsize=14, fontweight="bold", y=0.98)
     ax.set_title(subtitle, fontsize=10, color="#52514e")
     ax.set_xlabel("Abundance (%)")
-    ax.legend()
+    legend = ax.legend()
+    # Match the legend text styling to the direct labels (bold Observed,
+    # italic Expected) so the two reinforce each other instead of the
+    # legend using a third, unstyled convention of its own.
+    expected_text, observed_text = legend.get_texts()
+    expected_text.set_fontstyle("italic")
+    observed_text.set_fontweight("bold")
     fig.tight_layout()
 
     if output_path:
@@ -119,16 +141,16 @@ def plot_abundance_comparison(observed: dict[str, float], expected: dict[str, fl
 
 
 def main():
-    redistributed_df = pd.read_csv(REDISTRIBUTED_CSV_PATH)
-    observed = dict(zip(redistributed_df["species"], redistributed_df["percentage"]))
-    # Every classified read contributes exactly 1.0 total credit across the
-    # species it hit (proportional vote-share splitting), so the sum of
-    # estimated_reads is exactly the total classified-read count.
-    n_reads = round(redistributed_df["estimated_reads"].sum())
+    classified_df = pd.read_csv(CLASSIFIED_CSV_PATH)
+    classified_df = classified_df[classified_df["best_match"].notna()]
+    counts = classified_df["best_match"].value_counts()
+    n_reads = int(counts.sum())
+    observed = {species: count / n_reads * 100 for species, count in counts.items()
+                if species in EXPECTED_ABUNDANCE}
 
     plot_abundance_comparison(
         observed, EXPECTED_ABUNDANCE,
-        title="Redistributed vs. Expected Abundance (ZymoBIOMICS D6300)",
+        title="Observed vs. Zymo's 16S-Adjusted Expected Abundance (ZymoBIOMICS D6300)",
         n_reads=n_reads,
         output_path=OUTPUT_PATH,
     )
