@@ -1,6 +1,7 @@
 import pickle
 
 import pandas as pd
+import pytest
 
 from classifier_functions import build_kmer_index
 from classify_reads import classify_file
@@ -75,6 +76,39 @@ def test_classify_file_min_quality_rejects_fasta_input(tmp_path):
         assert "FASTQ" in str(e)
     else:
         assert False, "Expected ValueError for min_quality on FASTA input"
+
+
+def test_classify_file_redistribute_off_by_default(tmp_path):
+    index_path = make_index(tmp_path)
+    reads_path = tmp_path / "reads.fasta"
+    write_fasta(reads_path, [("read1", "ACGTACGTACGT")])
+    output_path = tmp_path / "results.csv"
+
+    classify_file(index_path, str(reads_path), k=4, output_path=str(output_path))
+
+    redistributed_path = tmp_path / "results_redistributed.csv"
+    assert not redistributed_path.exists()
+
+
+def test_classify_file_redistribute_splits_ambiguous_votes(tmp_path):
+    index_path = make_index(tmp_path)
+    reads_path = tmp_path / "reads.fasta"
+    write_fasta(reads_path, [
+        ("read1", "ACGTACGTACGT"),  # pure species_a match
+        ("read2", "ACGTGGGGTTTT"),  # ambiguous mix of both
+        ("read3", "CCCCCCCCCCCC"),  # matches nothing
+    ])
+    output_path = tmp_path / "results.csv"
+
+    classify_file(index_path, str(reads_path), k=4, output_path=str(output_path), redistribute=True)
+
+    redistributed_path = tmp_path / "results_redistributed.csv"
+    assert redistributed_path.exists()
+    redistributed_df = pd.read_csv(redistributed_path).set_index("species")
+    # 2 classified reads total: read1 gives species_a full credit, read2
+    # splits its credit across both species it hit.
+    assert redistributed_df["estimated_reads"].sum() == pytest.approx(2.0)
+    assert redistributed_df.loc["species_a", "estimated_reads"] > redistributed_df.loc["species_b", "estimated_reads"]
 
 
 def test_classify_file_populates_database(tmp_path):

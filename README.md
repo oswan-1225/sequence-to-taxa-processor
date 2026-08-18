@@ -29,9 +29,9 @@ python src/pipeline.py \
   --source SRA
 ```
 
-Everything it produces (index, classifications CSV, redistributed-abundance
-CSV, SQLite database, diversity report, species-abundance CSV, abundance
-plot) lands in `--output-dir`. A few flags worth knowing about:
+Everything it produces (index, classifications CSV, SQLite database,
+diversity report, species-abundance CSV, abundance plot) lands in
+`--output-dir`. A few flags worth knowing about:
 
 - `--index path/to/kmer_index.pkl` reuses an existing index instead of
   rebuilding it. It's independent of `--genome-dir`. If you pass both,
@@ -43,6 +43,9 @@ plot) lands in `--output-dir`. A few flags worth knowing about:
 - `--top-n 10` controls how many species get plotted individually before
   the rest collapse into "Other" (default: 10).
 - `--skip-plot` skips the plotting stage.
+- `--redistribute` also writes a second, proportional vote-share
+  abundance CSV alongside the normal winner-take-all one. Off by default,
+  see "How it works" and "Validated accuracy" below for why.
 
 If `--genome-dir` is given, those reference genomes also get checked for
 GC-content outliers (`src/qc.py`). You'll see a warning if a species'
@@ -66,11 +69,13 @@ them with `--help` for their options.
   appear in many genomes by chance (DNA has only 4 letters), making them
   non-discriminating. Real tools like Kraken2 use k in the 21-35 range for
   the same reason.
-- **Vote redistribution (experimental)**: alongside the per-read
-  winner-take-all CSV, `classify_reads.py` also splits each read's k-mer
-  votes proportionally across every species it hit, instead of giving the
-  whole read to one winner. See "Validated accuracy" below, it measures
-  worse than winner-take-all on this dataset.
+- **Vote redistribution (opt-in, `--redistribute`)**: alongside the
+  per-read winner-take-all CSV, splits each read's k-mer votes
+  proportionally across every species it hit, instead of giving the
+  whole read to one winner. Off by default, it measures worse than
+  winner-take-all on this dataset (see "Validated accuracy" below) - kept
+  available for data where ambiguous multi-species reads are rare rather
+  than the norm, e.g. true shotgun sequencing.
 
 ### Validated accuracy
 
