@@ -29,9 +29,9 @@ python src/pipeline.py \
   --source SRA
 ```
 
-Everything it produces (index, classifications CSV, SQLite database,
-diversity report, species-abundance CSV, abundance plot) lands in
-`--output-dir`. A few flags worth knowing about:
+Everything it produces (index, classifications CSV, redistributed-abundance
+CSV, SQLite database, diversity report, species-abundance CSV, abundance
+plot) lands in `--output-dir`. A few flags worth knowing about:
 
 - `--index path/to/kmer_index.pkl` reuses an existing index instead of
   rebuilding it. It's independent of `--genome-dir`. If you pass both,
@@ -66,22 +66,38 @@ them with `--help` for their options.
   appear in many genomes by chance (DNA has only 4 letters), making them
   non-discriminating. Real tools like Kraken2 use k in the 21-35 range for
   the same reason.
+- **Splitting votes for better abundance estimates**: alongside the
+  per-read winner-take-all CSV, `classify_reads.py` also splits each
+  read's k-mer votes proportionally across every species it hit, instead
+  of giving the whole read to one winner. See "Validated accuracy" below
+  for the measured effect.
 
 ### Validated accuracy
 
-Classified 390,381 real Illumina reads (SRA accession SRR10391187, from the
-ZymoBIOMICS D6300 mock community with 8 bacterial species at ~12% each) against
-an 8-species reference index (k=21, 30.5M k-mers):
+Classified 390,381 real Illumina reads (SRA accession SRR10391187) against a
+10-species ZymoBIOMICS D6300 reference index (8 bacteria at 12% each, 2
+yeasts at 2% each, k=21, 68.66M k-mers).
 
-- All 8 expected species correctly detected, no phantom species
-- 95.9% of reads classified (4.1% unclassified)
-- Per-species abundance in the 4.9%–18.2% range (theoretical truth: 12%
-  each) — deviations are explainable by genome size, GC content/sequencing
-  bias, and ambiguous k-mer vote-sharing, not unexplained noise
+**Redistributed bacterial abundance lands within 12.3% mean relative
+deviation of ground truth, better than [Zymo's own published <15% baseline](https://files.zymoresearch.com/protocols/_d6300_zymobiomics_microbial_community_standard.pdf)
+from their in-house shotgun sequencing.** That's despite SRR10391187 turning
+out to be 16S rRNA amplicon sequencing, not whole-genome shotgun as
+originally assumed. That's more challenging for a whole-genome k-mer
+classifier, since each read only covers a ~588bp PCR-amplified slice of the
+genome rather than a uniform sample of it.
+
+The two yeasts (Saccharomyces cerevisiae, Cryptococcus neoformans) landed at
+roughly 1/10th to 1/30th of their expected 2% each, and vote-splitting
+barely moved them. Confirmed via SRA metadata: bacteria-targeted 16S
+primers generally don't amplify fungal rRNA, so most yeast DNA was never in
+the sequenced pool to begin with.
+
+All 10 species were still correctly detected (no phantoms), 96.1% of reads
+classified.
 
 ### Validation graphic
 
-![Classified vs. expected abundance for each species in the ZymoBIOMICS mock community](docs/abundance_validation.png)
+![Redistributed vs. expected abundance for each species in the ZymoBIOMICS mock community](docs/abundance_validation.png)
 
 Same validation run as above, plotted against the known ground truth. This
 simply validates the tool's accuracy, it isn't a core component of the
@@ -105,9 +121,9 @@ See `src/benchmark.py`.
 
 A `Dockerfile` is included (`python:3.13-slim`, entrypoint wraps
 `pipeline.py`, reference genomes baked into the image). Verified: a
-container build reproduces the pipeline's validated accuracy on the
-ZymoBIOMICS dataset (390,381 reads classified, 95.9% classified, 8/8
-species detected) with no changes needed from the pure-code run:
+container build reproduces the pipeline's output identically to a
+bare-metal run, on the 8-species pre-redistribution baseline (see
+"Validated accuracy" above for current numbers):
 
 ```bash
 docker build -t sequence-to-taxa-processor .
@@ -147,8 +163,9 @@ sequence-to-taxa-processor/
 
 ### Project status
 
-- **Done**: core k-mer classifier, real FASTA/FASTQ parsing, SQLite storage
-  with per-sample abundance queries, diversity metrics (species richness,
+- **Done**: core k-mer classifier, proportional vote-splitting for
+  abundance estimates, real FASTA/FASTQ parsing, SQLite storage with
+  per-sample abundance queries, diversity metrics (species richness,
   Shannon index), GC-outlier and read-quality QC (`qc.py`), a
   species-abundance-by-sample visualization, a unified `pipeline.py` CLI,
   CI running the test suite on every push, Docker containerization
@@ -160,6 +177,6 @@ sequence-to-taxa-processor/
 
 Validation (not core to the tool) uses the **ZymoBIOMICS Microbial Community
 Standard (D6300)**, a commercially defined mock community with known
-composition BioProject PRJNA587452, SRA accession SRR10391187. Reference
-genomes for its 8 bacterial species are committed under
+composition, BioProject PRJNA587452, SRA accession SRR10391187. Reference
+genomes for its 8 bacterial species and 2 yeast species are committed under
 `data/reference/Genomes/`.

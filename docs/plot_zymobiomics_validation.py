@@ -1,9 +1,9 @@
 """
-One-off portfolio graphic: observed vs. expected per-species abundance
-against the ZymoBIOMICS D6300 mock community, built from a completed
-pipeline.py run's classifications database.
+One-off portfolio graphic: redistributed observed vs. expected per-species
+abundance against the ZymoBIOMICS D6300 mock community, built from a
+completed classify_reads.py run's redistributed-abundance CSV.
 
-Dataset-specific - the ~12.5%-each expected values are Zymo's published
+Dataset-specific - the 12%/2% expected values are Zymo's published
 composition for this one commercial reference standard, which is why this
 lives here and not in src/visualization.py (general plotting code takes
 observed/expected as plain arguments; it doesn't know "Zymo" from any
@@ -16,28 +16,30 @@ import os
 import sys
 
 import matplotlib.pyplot as plt
+import pandas as pd
 from matplotlib.figure import Figure
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "src"))
 
-from database import get_abundance  # type: ignore
-
-DB_PATH = os.path.join(PROJECT_ROOT, "results", "pseudomonas_investigation", "classifications.db")
+REDISTRIBUTED_CSV_PATH = os.path.join(PROJECT_ROOT, "results", "ten_species_redistribution", "classified_redistributed.csv")
 OUTPUT_PATH = os.path.join(PROJECT_ROOT, "results", "abundance_validation.png")
 
-# 8 species in the ZymoBIOMICS D6300 mock community, evenly represented by
-# Zymo's published design (1/8 = 12.5% each) - not something the classifier
-# measures, a fact about the reference standard itself.
+# 10 species in the ZymoBIOMICS D6300 mock community as of the 2026-08-17
+# yeast reintroduction: 8 bacteria at 12% each + 2 yeasts at 2% each
+# (8*12 + 2*2 = 100) - Zymo's published design, not something the
+# classifier measures, a fact about the reference standard itself.
 EXPECTED_ABUNDANCE = {
-    "Bacillus_subtilis_complete_genome": 12.5,
-    "Enterococcus_faecalis_complete_genome": 12.5,
-    "Escherichia_coli_complete_genome": 12.5,
-    "Lactobacillus_fermentum_complete_genome": 12.5,
-    "Listeria_monocytogenes_complete_genome": 12.5,
-    "Pseudomonas_aeruginosa_complete_genome": 12.5,
-    "Salmonella_enterica_complete_genome": 12.5,
-    "Staphylococcus_aureus_complete_genome": 12.5,
+    "Bacillus_subtilis_complete_genome": 12.0,
+    "Enterococcus_faecalis_complete_genome": 12.0,
+    "Escherichia_coli_complete_genome": 12.0,
+    "Lactobacillus_fermentum_complete_genome": 12.0,
+    "Listeria_monocytogenes_complete_genome": 12.0,
+    "Pseudomonas_aeruginosa_complete_genome": 12.0,
+    "Salmonella_enterica_complete_genome": 12.0,
+    "Staphylococcus_aureus_complete_genome": 12.0,
+    "Cryptococcus_neoformans_complete_genome": 2.0,
+    "Saccharomyces_cerevisiae_complete_genome": 2.0,
 }
 
 
@@ -71,32 +73,37 @@ def plot_abundance_comparison(observed: dict[str, float], expected: dict[str, fl
     ax.set_yticklabels([_display_name(s) for s in species])
     ax.invert_yaxis()
 
+    # Zebra striping and gridlines behind everything else.
+    for y in y_positions[::2]:
+        ax.axhspan(y - 0.5, y + 0.5, color="#c3c2b7", alpha=0.12, zorder=0)
+    ax.xaxis.grid(True, color="#e8e7e0", linewidth=0.8, zorder=0)
+    ax.set_axisbelow(True)
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+
     xmin = [min(e, o) for e, o in zip(expected_vals, observed_vals)]
     xmax = [max(e, o) for e, o in zip(expected_vals, observed_vals)]
 
     ax.hlines(y_positions, xmin, xmax, colors="#c3c2b7", linewidth=2, zorder=1)
-    ax.scatter(expected_vals, y_positions, color="#4B4DA0", s=100, zorder=2, label="Expected")
-    ax.scatter(observed_vals, y_positions, color="#5F9930", s=100, zorder=2, label="Observed")
-
-    # Direct labels on the Observed dots only - Expected repeats the same
-    # 12.5% eight times, so labeling it too would just be noise. Offset in
-    # points (screen space), not data units, so the gap next to the dot
-    # stays a constant size regardless of the x-axis scale. Which side the
-    # label sits on flips with which side the dot is on, so it never
-    # collides with the connecting line.
-    for y, e, o in zip(y_positions, expected_vals, observed_vals):
-        offset, ha = (8, "left") if o >= e else (-8, "right")
-        ax.annotate(f"{o:.1f}%", (o, y), xytext=(offset, 0), textcoords="offset points",
-                    va="center", ha=ha, fontsize=9, color="#52514e")
+    # White ring keeps each dot legible crossing the connecting line/gridlines.
+    ax.scatter(expected_vals, y_positions, color="#4B4DA0", s=100,
+               edgecolors="white", linewidths=1.5, zorder=3, label="Expected")
+    ax.scatter(observed_vals, y_positions, color="#5F9930", s=60,
+               edgecolors="white", linewidths=1.5, zorder=3, label="Observed")
 
     # Start the x-axis at 0 rather than autoscaling tight to the data - a
-    # truncated axis makes any gap look more dramatic than it is. Extra
-    # headroom (not just 10%) leaves room for the direct labels above.
-    ax.set_xlim(0, max(expected_vals + observed_vals) * 1.2)
+    # truncated axis makes any gap look more dramatic than it is.
+    xmax_val = max(expected_vals + observed_vals) * 1.2
+    ax.set_xlim(0, xmax_val)
+
+    # Labels sit above the dot (not left/right) so they never cross the connecting line.
+    for y, o in zip(y_positions, observed_vals):
+        ax.annotate(f"{o:.1f}%", (o, y), xytext=(-2, 9), textcoords="offset points",
+                    va="bottom", ha="left", fontsize=9, color="#52514e")
 
     mean_abs_dev = sum(abs(o - e) for o, e in zip(observed_vals, expected_vals)) / len(species)
     if n_reads is not None:
-        subtitle = f"{n_reads:,} real Illumina sequencing reads classified — mean deviation {mean_abs_dev:.1f} percentage points"
+        subtitle = f"{n_reads:,} Illumina sequencing reads classified — mean deviation {mean_abs_dev:.1f} percentage points"
     else:
         subtitle = f"mean deviation {mean_abs_dev:.1f} percentage points from expected"
 
@@ -112,13 +119,16 @@ def plot_abundance_comparison(observed: dict[str, float], expected: dict[str, fl
 
 
 def main():
-    abundance_df = get_abundance(DB_PATH)
-    observed = dict(zip(abundance_df["best_match"], abundance_df["percent"]))
-    n_reads = int(abundance_df["total"].iloc[0])
+    redistributed_df = pd.read_csv(REDISTRIBUTED_CSV_PATH)
+    observed = dict(zip(redistributed_df["species"], redistributed_df["percentage"]))
+    # Every classified read contributes exactly 1.0 total credit across the
+    # species it hit (proportional vote-share splitting), so the sum of
+    # estimated_reads is exactly the total classified-read count.
+    n_reads = round(redistributed_df["estimated_reads"].sum())
 
     plot_abundance_comparison(
         observed, EXPECTED_ABUNDANCE,
-        title="Classified vs. Expected Abundance (ZymoBIOMICS D6300)",
+        title="Redistributed vs. Expected Abundance (ZymoBIOMICS D6300)",
         n_reads=n_reads,
         output_path=OUTPUT_PATH,
     )
