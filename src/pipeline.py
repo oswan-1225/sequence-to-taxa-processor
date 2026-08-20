@@ -1,11 +1,10 @@
 import os
-import pickle
 from typing import Optional
 
 import click
 
 from build_reference import load_all_genomes
-from classifier_functions import build_kmer_index
+from classifier_functions import build_kmer_index, save_index
 from classify_reads import classify_file
 from database import get_abundance, get_classification_totals
 from diversity import diversity_by_sample
@@ -97,8 +96,7 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
         try:
             kmer_index = build_kmer_index(genomes, k)
             index_path = os.path.join(output_dir, "kmer_index.pkl")
-            with open(index_path, 'wb') as f:
-                pickle.dump(kmer_index, f)
+            save_index(index_path, kmer_index, k)
         except Exception as e:
             raise RuntimeError(f"Stage 1 (build index) failed: {e}") from e
         click.echo(f"Built index with {len(kmer_index)} k-mers, saved to {index_path}")

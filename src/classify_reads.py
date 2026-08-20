@@ -1,8 +1,7 @@
 import argparse
-import pickle
 from typing import Optional
 from fasta_utils import parse_sequence_file, parse_fastq_qualities
-from classifier_functions import classify_read_top_hit
+from classifier_functions import classify_read_top_hit, load_index
 from qc import filter_low_quality_reads
 from tqdm import tqdm
 import pandas as pd
@@ -37,8 +36,7 @@ def classify_file(index_path: str, reads_path: str, k: int, output_path: str, db
         pd.DataFrame: one row per read (read_id, best_match, confidence) -
             the same data written to output_path.
     """
-    with open(index_path, 'rb') as f:
-        kmer_index = pickle.load(f)
+    kmer_index = load_index(index_path, k)
     print(f"Loaded index with {len(kmer_index)} k-mers")
 
     reads = parse_sequence_file(reads_path)

@@ -1,10 +1,9 @@
 import os
-import pickle
 
 import pandas as pd
 import pytest
 
-from classifier_functions import build_kmer_index
+from classifier_functions import build_kmer_index, save_index
 from pipeline import run_pipeline
 
 
@@ -62,8 +61,7 @@ def test_run_pipeline_reuses_existing_index_and_skips_build(tmp_path):
 
     genomes = {"species_a": "ACGTACGTACGT", "species_b": "TTTTGGGGTTTT"}
     index_path = tmp_path / "prebuilt.pkl"
-    with open(index_path, "wb") as f:
-        pickle.dump(build_kmer_index(genomes, 4), f)
+    save_index(str(index_path), build_kmer_index(genomes, 4), 4)
 
     outputs = run_pipeline(None, reads_path, str(output_dir), k=4, index=str(index_path))
 

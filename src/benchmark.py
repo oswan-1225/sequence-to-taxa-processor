@@ -1,9 +1,8 @@
 import argparse
 import time
 from typing import Optional
-from classifier_functions import classify_read_top_hit
+from classifier_functions import classify_read_top_hit, load_index
 from fasta_utils import parse_sequence_file
-import pickle
 
 
 def run_full_benchmark(reads: dict, index_path: str, k: int, sample_size: Optional[int] = None) -> dict:
@@ -22,8 +21,7 @@ def run_full_benchmark(reads: dict, index_path: str, k: int, sample_size: Option
     overall_start = time.time()
 
     load_start = time.time()
-    with open(index_path, "rb") as f:
-        kmer_index = pickle.load(f)
+    kmer_index = load_index(index_path, k)
     load_elapsed = time.time() - load_start
 
     read_items = list(reads.items())

@@ -1,9 +1,7 @@
-import pickle
-
 import pandas as pd
 import pytest
 
-from classifier_functions import build_kmer_index
+from classifier_functions import build_kmer_index, save_index
 from classify_reads import classify_file
 from database import get_abundance
 
@@ -21,8 +19,7 @@ def make_index(tmp_path, k=4):
     }
     index = build_kmer_index(genomes, k)
     index_path = tmp_path / "index.pkl"
-    with open(index_path, "wb") as f:
-        pickle.dump(index, f)
+    save_index(str(index_path), index, k)
     return str(index_path)
 
 

@@ -1,8 +1,7 @@
 import argparse
 import os
 from fasta_utils import parse_sequence_file
-from classifier_functions import build_kmer_index
-import pickle
+from classifier_functions import build_kmer_index, save_index
 
 VALID_EXTENSIONS = {'.fna', '.fasta', '.fa', '.fastq', '.fq'}
 
@@ -39,8 +38,7 @@ def main():
     index = build_kmer_index(genomes, args.k)
     print(f"Built k-mer index with {len(index)} unique k-mers of length {args.k}")
 
-    with open(args.output, 'wb') as f:
-        pickle.dump(index, f)
+    save_index(args.output, index, args.k)
     print(f"Saved index to {args.output}")
 
 if __name__ == "__main__":
