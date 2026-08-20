@@ -33,8 +33,12 @@ def classify_file(index_path: str, reads_path: str, k: int, output_path: str, db
             multi-species reads are rare rather than the norm).
 
     Returns:
-        pd.DataFrame: one row per read (read_id, best_match, confidence) -
-            the same data written to output_path.
+        pd.DataFrame: one row per read (read_id, best_match, confidence,
+            n_species_hit) - the same data written to output_path.
+            n_species_hit is the number of distinct species the read's k-mers
+            matched, which combined with best_match distinguishes an
+            unambiguous hit from a winner-take-all one, and a tie from a read
+            that matched nothing.
     """
     kmer_index = load_index(index_path, k)
     print(f"Loaded index with {len(kmer_index)} k-mers")
@@ -68,7 +72,19 @@ def classify_file(index_path: str, reads_path: str, k: int, output_path: str, db
         results.append({
             "read_id": read_name,
             "best_match": classification['best_match'],
-            "confidence": classification['confidence']
+            "confidence": classification['confidence'],
+            # How many species this read's k-mers hit at all, regardless of
+            # who won. One integer, but combined with best_match it separates
+            # four cases that would otherwise be two indistinguishable pairs
+            # on disk:
+            #   n=1, best_match set    -> unambiguous single-species hit
+            #   n>1, best_match set    -> ambiguous, winner took all
+            #   n>1, best_match NULL   -> tie
+            #   n=0, best_match NULL   -> matched nothing
+            # Without it, "discard ambiguous reads" accuracy and the tie rate
+            # cannot be recomputed from a saved run - both were previously
+            # measured by throwaway scripts and were unreproducible.
+            "n_species_hit": len(classification['votes'])
         })
     results_df = pd.DataFrame(results)
     results_df.to_csv(output_path, index=False)

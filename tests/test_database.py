@@ -184,3 +184,116 @@ def test_get_classification_totals_all_unclassified(tmp_path):
 
     assert row["classified_reads"] == 0
     assert row["unclassified_percent"] == pytest.approx(100.0)
+
+
+# --- n_species_hit persistence and schema versioning ------------------------
+
+
+def test_insert_sample_results_persists_n_species_hit(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    create_database(db_path)
+    results = [
+        {"read_id": "r1", "best_match": "species_a", "confidence": 1.0, "n_species_hit": 1},
+        {"read_id": "r2", "best_match": "species_a", "confidence": 0.6, "n_species_hit": 3},
+        {"read_id": "r3", "best_match": None, "confidence": 0.0, "n_species_hit": 2},
+        {"read_id": "r4", "best_match": None, "confidence": 0.0, "n_species_hit": 0},
+    ]
+    insert_sample_results(db_path, "sample1", "local", results)
+
+    conn = sqlite3.connect(db_path)
+    rows = dict(conn.execute(
+        "SELECT read_id, n_species_hit FROM classifications"
+    ).fetchall())
+    conn.close()
+
+    assert rows == {"r1": 1, "r2": 3, "r3": 2, "r4": 0}
+
+
+def test_ties_and_no_matches_are_distinguishable_in_the_database(tmp_path):
+    """Both have a NULL best_match; only n_species_hit separates them."""
+    db_path = str(tmp_path / "test.db")
+    create_database(db_path)
+    insert_sample_results(db_path, "sample1", "local", [
+        {"read_id": "tied", "best_match": None, "confidence": 0.0, "n_species_hit": 2},
+        {"read_id": "nothing", "best_match": None, "confidence": 0.0, "n_species_hit": 0},
+    ])
+
+    conn = sqlite3.connect(db_path)
+    ties = conn.execute(
+        "SELECT read_id FROM classifications "
+        "WHERE best_match IS NULL AND n_species_hit >= 2"
+    ).fetchall()
+    conn.close()
+
+    assert ties == [("tied",)]
+
+
+def test_insert_tolerates_results_without_n_species_hit(tmp_path):
+    """Read with .get(), so hand-built result dicts predating the column work."""
+    db_path = str(tmp_path / "test.db")
+    create_database(db_path)
+
+    insert_sample_results(db_path, "sample1", "local", [
+        {"read_id": "r1", "best_match": "species_a", "confidence": 1.0},
+    ])
+
+    conn = sqlite3.connect(db_path)
+    value = conn.execute("SELECT n_species_hit FROM classifications").fetchone()[0]
+    conn.close()
+
+    assert value is None
+
+
+def test_create_database_rejects_outdated_schema(tmp_path):
+    """CREATE TABLE IF NOT EXISTS is a no-op on an existing table.
+
+    Without an explicit check, an old database keeps its old columns and the
+    failure surfaces much later as an opaque sqlite error inside executemany.
+    """
+    db_path = str(tmp_path / "old.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+        CREATE TABLE classifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sample_id TEXT,
+            read_id TEXT,
+            best_match TEXT,
+            confidence REAL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(ValueError, match="outdated classifications table"):
+        create_database(db_path)
+
+
+def test_outdated_schema_error_names_the_missing_column_and_the_fix(tmp_path):
+    db_path = str(tmp_path / "old.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+        CREATE TABLE classifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sample_id TEXT,
+            read_id TEXT,
+            best_match TEXT,
+            confidence REAL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(ValueError) as excinfo:
+        create_database(db_path)
+
+    message = str(excinfo.value)
+    assert "n_species_hit" in message
+    assert "delete it and rerun" in message
+
+
+def test_create_database_is_still_idempotent_on_a_current_database(tmp_path):
+    """The guard must not fire on a database this version wrote."""
+    db_path = str(tmp_path / "test.db")
+    create_database(db_path)
+
+    create_database(db_path)  # must not raise

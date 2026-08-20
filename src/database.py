@@ -2,10 +2,24 @@ import sqlite3
 import os
 import pandas as pd
 
+# Every column create_database() expects on the classifications table. Used to
+# detect a database written before a schema change - see create_database().
+EXPECTED_CLASSIFICATION_COLUMNS = {
+    "id", "sample_id", "read_id", "best_match", "confidence", "n_species_hit"
+}
+
+
 def create_database(db_path: str) -> None:
     """
     Create an SQLite database and its tables, if they do not already exist.
-    
+
+    Raises ValueError if db_path is an existing database whose classifications
+    table predates a schema change. CREATE TABLE IF NOT EXISTS is a no-op on an
+    existing table, so without this check an outdated database silently keeps
+    its old columns and the failure surfaces later as an opaque sqlite error
+    inside executemany. Results databases are regenerable, so the fix is to
+    delete the file and rerun.
+
     Parameters:
         db_path (str): The path to the SQLite database file.
     """
@@ -30,9 +44,24 @@ def create_database(db_path: str) -> None:
             read_id TEXT,
             best_match TEXT,
             confidence REAL,
+            n_species_hit INTEGER,
             FOREIGN KEY (sample_id) REFERENCES samples(sample_id)
         )
         """)
+
+    # Runs after the CREATE, which is a no-op when the table already exists.
+    # On a fresh database the statement above just created every expected
+    # column, so this passes; on an outdated one it fires.
+    cursor.execute("PRAGMA table_info(classifications)")
+    existing_columns = {row[1] for row in cursor.fetchall()}
+    missing = EXPECTED_CLASSIFICATION_COLUMNS - existing_columns
+    if missing:
+        conn.close()
+        raise ValueError(
+            f"{db_path} has an outdated classifications table, missing "
+            f"{sorted(missing)}. Classification databases are regenerable "
+            f"outputs, so delete it and rerun rather than migrating it."
+        )
 
     conn.commit()
     conn.close()
@@ -51,7 +80,11 @@ def insert_sample_results(db_path: str, sample_id: str, source: str, results: li
         db_path (str): Path to the SQLite database file.
         sample_id (str): Unique identifier for the sample.
         source (str): Source of the sample (e.g., "SRA", "local").
-        results (list[dict]): List of {'read_id', "best_match", "confidence"} dicts, matching the shape classify_reads.py already builds.
+        results (list[dict]): List of {'read_id', "best_match", "confidence",
+            "n_species_hit"} dicts, matching the shape classify_reads.py
+            already builds. n_species_hit is read with .get() rather than [],
+            so callers that predate the column (and tests that hand-build
+            result dicts) still work, storing NULL for it.
         """
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -62,8 +95,13 @@ def insert_sample_results(db_path: str, sample_id: str, source: str, results: li
 
     cursor.execute("DELETE FROM classifications WHERE sample_id = ?", (sample_id,))
 
-    classification_rows = [(sample_id, result['read_id'], result['best_match'], result['confidence']) for result in results]
-    cursor.executemany("""INSERT INTO classifications (sample_id, read_id, best_match, confidence) VALUES (?, ?, ?, ?)""", classification_rows)
+    classification_rows = [(sample_id, result['read_id'], result['best_match'],
+                            result['confidence'], result.get('n_species_hit'))
+                           for result in results]
+    cursor.executemany(
+        """INSERT INTO classifications (sample_id, read_id, best_match, confidence, n_species_hit)
+           VALUES (?, ?, ?, ?, ?)""",
+        classification_rows)
     conn.commit()
     conn.close()
 
