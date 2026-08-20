@@ -151,7 +151,7 @@ against the 8-species benchmark (see "Validated accuracy" above for the
 full 10-species numbers):
 
 ```bash
-docker build -t sequence-to-taxa-processor
+docker build -t sequence-to-taxa-processor .
 docker run --rm -v ${PWD}/results:/app/results sequence-to-taxa-processor \
   --genome-dir data/reference/Genomes \
   --reads /app/reads.fastq \
