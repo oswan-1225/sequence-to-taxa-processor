@@ -11,7 +11,7 @@ def build_kmer_index(sequences: dict, k: int) -> dict:
         k (int): The length of the k-mers to extract
         
     Returns:
-        dict: A dictionary keys: k-mers, values: list of sequence names containing the k-mer
+        dict: A dictionary keys: k-mers, values: set of sequence names containing the k-mer
     """
     kmer_index = {}
     for seq_name, seq in tqdm(sequences.items(), desc="Indexing genomes"):

@@ -9,7 +9,9 @@ def create_database(db_path: str) -> None:
     Parameters:
         db_path (str): The path to the SQLite database file.
     """
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    # abspath first: for a bare filename like "results.db", os.path.dirname
+    # returns "" and os.makedirs("") raises FileNotFoundError.
+    os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
@@ -37,9 +39,14 @@ def create_database(db_path: str) -> None:
 
 def insert_sample_results(db_path: str, sample_id: str, source: str, results: list[dict]) -> None:
     """
-    Insert a sample's classifciation results into the database.
-    Creates the sample rwo if it doesn't already exist.
-    
+    Insert a sample's classification results into the database.
+    Creates the sample row if it doesn't already exist.
+
+    Re-inserting an existing sample_id DELETES that sample's previous
+    classification rows before writing the new ones, so running the same
+    sample twice gives the same result as running it once rather than
+    doubling its counts. Other samples in the database are untouched.
+
     Parameters:
         db_path (str): Path to the SQLite database file.
         sample_id (str): Unique identifier for the sample.
@@ -52,6 +59,8 @@ def insert_sample_results(db_path: str, sample_id: str, source: str, results: li
     cursor.execute("PRAGMA foreign_keys = ON")
 
     cursor.execute("""INSERT OR IGNORE INTO samples (sample_id, source) VALUES (?, ?)""", (sample_id, source))
+
+    cursor.execute("DELETE FROM classifications WHERE sample_id = ?", (sample_id,))
 
     classification_rows = [(sample_id, result['read_id'], result['best_match'], result['confidence']) for result in results]
     cursor.executemany("""INSERT INTO classifications (sample_id, read_id, best_match, confidence) VALUES (?, ?, ?, ?)""", classification_rows)

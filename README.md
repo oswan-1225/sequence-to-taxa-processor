@@ -50,8 +50,10 @@ diversity report, species-abundance CSV, abundance plot) lands in
 If `--genome-dir` is given, those reference genomes also get checked for
 GC-content outliers (`src/qc.py`). You'll see a warning if a species'
 genome GC% is a statistical outlier relative to the rest of the reference
-set, since that's a plausible contributor to abundance skew (see
-"Validated accuracy" below).
+set. The warning describes the reference genome, not a problem found in
+your data. Extreme GC only distorts abundance when the library prep
+introduced GC-dependent coverage bias, which applies to whole-genome
+shotgun sequencing and not to amplicon data.
 
 Each stage still works standalone if you want more control over an
 individual step: `src/build_reference.py`, `src/classify_reads.py`
@@ -64,7 +66,11 @@ them with `--help` for their options.
   k-mers (default k=21) and indexed as `{kmer: set of species}`.
 - **Classification**: each read is broken into the same k-mers, and the
   species with the most matching k-mers wins ("top hit"), with a confidence
-  score based on vote share.
+  score based on vote share. A read is only assigned when one species holds
+  the top count outright. If two or more species tie, the read is left
+  unclassified rather than assigned by a tie-break, which keeps results
+  reproducible across runs. Ties affect 0.15% of reads on the validation
+  dataset below.
 - **Why k=21**: short k-mers (k=3/4) are statistically near-guaranteed to
   appear in many genomes by chance (DNA has only 4 letters), making them
   non-discriminating. Real tools like Kraken2 use k in the 21-35 range for
@@ -106,11 +112,11 @@ primers, which is why the yeasts show `NA`, not `0%`; those primers don't
 amplify fungal rRNA at all. These represent theoretical ideal yields from 16S.)
 
 Winner-take-all classification (each read's full weight goes to its best
-match) lands within 14.9% mean relative deviation of that target across
+match) lands within 14.8% mean relative deviation of that target across
 the 8 bacteria (Zymo's own protocol states <15% relative abundance deviation). The two yeasts are basically invisible in this data, which is intentional.  
 Bacterial 16S primers don't pick up fungal
 rRNA, and Zymo's own 16S numbers list the yeasts as not applicable. Our
-observed 0.06% and 0.23% line up with that.
+observed 0.06% and 0.22% line up with that.
 
 Two alternatives were tested and rejected in favor of winner-take-all.
 Proportional vote-share redistribution (splitting a read's credit across
@@ -151,7 +157,7 @@ interpret:
 Real output from the same 390,381-read ZymoBIOMICS run described above
 (`python src/pipeline.py --genome-dir data/reference/Genomes --index
 data/reference/kmer_index.pkl --reads data/raw/sra_reads/SRR10391187_1.fastq
---output-dir results/`). 3.9% of reads were unclassified here, most
+--output-dir results/`). 4.1% of reads were unclassified here, most
 samples classify cleanly against a reference set that actually contains
 what's in them.
 
@@ -167,15 +173,27 @@ End-to-end timing on the 390,381-read / 68.66M-k-mer benchmark above:
 - Classification: ~68s (~5,700 reads/sec)
 - Total: ~134s
 
-See `src/benchmark.py`.
+Reproduce with `src/benchmark.py`:
+
+```bash
+python src/benchmark.py   --index data/reference/kmer_index.pkl   --reads data/raw/sra_reads/SRR10391187_1.fastq   --k 21
+```
+
+`--sample-size N` classifies only the first N reads. Throughput on a small
+sample runs higher than the full-run figure above, so quote the full run.
+
+### Reproducibility
+
+Classification is deterministic: two runs over the same reads and index
+produce byte-identical `classifications.csv`, verified on the 390,381-read
+benchmark. Ties are what used to break this, and they are now left
+unclassified rather than resolved by set iteration order (see "How it
+works" above).
 
 ### Docker
 
 A `Dockerfile` is included (`python:3.13-slim`, entrypoint wraps
-`pipeline.py`, reference genomes baked into the image). A container build
-reproduces the pipeline's output identically to a bare-metal run, checked
-against the 8-species benchmark (see "Validated accuracy" above for the
-full 10-species numbers):
+`pipeline.py`, reference genomes baked into the image).
 
 ```bash
 docker build -t sequence-to-taxa-processor .
@@ -199,7 +217,8 @@ sequence-to-taxa-processor/
 │   ├── database.py             # SQLite storage + abundance queries
 │   ├── diversity.py            # species richness, Shannon diversity
 │   ├── qc.py                   # GC-outlier check, read quality filtering
-│   ├── visualization.py        # species-abundance-by-sample chart
+│   ├── visualization.py        # single-sample summary chart (pipeline default)
+│   │                            #   + stacked multi-sample chart
 │   └── pipeline.py             # CLI: unified build->classify->diversity->plot
 ├── data/
 │   ├── reference/Genomes/      # example reference genomes (ZymoBIOMICS)
@@ -222,8 +241,8 @@ sequence-to-taxa-processor/
   species-abundance-by-sample visualization, a unified `pipeline.py` CLI,
   CI running the test suite on every push, Docker containerization
   (see above).
-- **Not yet started**: Nextflow workflow orchestration, cloud deployment,
-  polished demo notebooks.
+- **Not yet started**: Nextflow workflow orchestration, polished demo
+  notebooks.
 
 ### Validation dataset
 

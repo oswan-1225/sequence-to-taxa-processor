@@ -4,22 +4,6 @@ from diversity import diversity_by_sample
 from visualization import plot_multi_sample_abundance
 
 
-def generate_report(db_path: str):
-    """
-    Compute per-sample diversity metrics from a classification database.
-
-    Parameters:
-        db_path (str): Path to a SQLite database populated by
-            classify_reads.py (via --db).
-
-    Returns:
-        pd.DataFrame: diversity_by_sample()'s output - one row per sample_id
-            with species_richness and shannon_diversity.
-    """
-    abundance_df = get_abundance(db_path)
-    return diversity_by_sample(abundance_df)
-
-
 def main():
     parser = argparse.ArgumentParser(description="Report per-sample species richness and Shannon diversity from a classification database.")
     parser.add_argument("--db", required=True, help="Path to a SQLite database populated by classify_reads.py (via --db)")
@@ -29,7 +13,11 @@ def main():
 
     args = parser.parse_args()
 
-    report_df = generate_report(args.db)
+    # Queried once and reused: the plot needs the same per-(sample, species)
+    # breakdown the diversity metrics are derived from, and re-querying it
+    # means a second full aggregation over every classified read.
+    abundance_df = get_abundance(args.db)
+    report_df = diversity_by_sample(abundance_df)
     print(report_df.to_string(index=False))
 
     if args.output:
@@ -37,7 +25,6 @@ def main():
         print(f"Diversity report saved to {args.output}")
 
     if args.plot:
-        abundance_df = get_abundance(args.db)
         totals_df = get_classification_totals(args.db)
         unclassified_percent = totals_df.set_index("sample_id")["unclassified_percent"]
         plot_multi_sample_abundance(abundance_df, unclassified_percent, top_n=args.top_n, output_path=args.plot)

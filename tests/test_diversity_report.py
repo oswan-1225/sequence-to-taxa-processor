@@ -1,11 +1,11 @@
 import numpy as np
 import pytest
 
-from database import create_database, insert_sample_results
-from diversity_report import generate_report
+from database import create_database, insert_sample_results, get_abundance
+from diversity import diversity_by_sample
 
 
-def test_generate_report_matches_hand_computed_diversity(tmp_path):
+def test_db_to_diversity_matches_hand_computed_values(tmp_path):
     db_path = str(tmp_path / "test.db")
     create_database(db_path)
 
@@ -21,7 +21,9 @@ def test_generate_report_matches_hand_computed_diversity(tmp_path):
     insert_sample_results(db_path, "sample1", "test", sample1_results)
     insert_sample_results(db_path, "sample2", "test", sample2_results)
 
-    report_df = generate_report(db_path)
+    # The chain diversity_report.py's CLI runs: rows in the DB -> per-sample
+    # species breakdown -> richness and Shannon.
+    report_df = diversity_by_sample(get_abundance(db_path))
 
     assert set(report_df["sample_id"]) == {"sample1", "sample2"}
 

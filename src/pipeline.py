@@ -83,7 +83,7 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
         else:
             click.echo("  No GC outliers detected in reference set.")
     else:
-        click.echo("Skipping GC bias check (no --genome-dir given).")
+        click.echo("Skipping GC outlier check (no --genome-dir given).")
 
     if index:
         if not os.path.exists(index):

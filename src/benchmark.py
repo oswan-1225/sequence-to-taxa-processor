@@ -1,6 +1,8 @@
+import argparse
 import time
 from typing import Optional
 from classifier_functions import classify_read_top_hit
+from fasta_utils import parse_sequence_file
 import pickle
 
 
@@ -52,3 +54,25 @@ def run_full_benchmark(reads: dict, index_path: str, k: int, sample_size: Option
         "results": results
     }
 
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Benchmark index load + classification throughput end to end."
+    )
+    parser.add_argument("--index", required=True,
+                        help="Path to a k-mer index built by build_reference.py (.pkl)")
+    parser.add_argument("--reads", required=True,
+                        help="Path to a FASTA or FASTQ file of reads to classify")
+    parser.add_argument("--k", type=int, default=21,
+                        help="K-mer length - MUST match the value used to build the index")
+    parser.add_argument("--sample-size", type=int, default=None,
+                        help="Only classify the first N reads (default: all of them)")
+
+    args = parser.parse_args()
+
+    reads = parse_sequence_file(args.reads)
+    run_full_benchmark(reads, args.index, args.k, args.sample_size)
+
+
+if __name__ == "__main__":
+    main()

@@ -29,7 +29,9 @@ from matplotlib.figure import Figure
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "src"))
 
-CLASSIFIED_CSV_PATH = os.path.join(PROJECT_ROOT, "results", "ten_species_redistribution", "classified.csv")
+# Default run folder this graphic is built from. Override on the command line
+# to plot a different run: python docs/plot_zymobiomics_validation.py <csv>
+DEFAULT_CLASSIFIED_CSV = os.path.join(PROJECT_ROOT, "results", "zymo_run_a", "classifications.csv")
 OUTPUT_PATH = os.path.join(PROJECT_ROOT, "results", "abundance_validation.png")
 
 # Zymo's published "16S Only" theoretical composition for D6300 (Table 1),
@@ -141,7 +143,13 @@ def plot_abundance_comparison(observed: dict[str, float], expected: dict[str, fl
 
 
 def main():
-    classified_df = pd.read_csv(CLASSIFIED_CSV_PATH)
+    csv_path = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_CLASSIFIED_CSV
+    if not os.path.exists(csv_path):
+        raise SystemExit(
+            f"No classification CSV at {csv_path}. Run the pipeline first, or pass "
+            f"a path: python docs/plot_zymobiomics_validation.py <classifications.csv>"
+        )
+    classified_df = pd.read_csv(csv_path)
     classified_df = classified_df[classified_df["best_match"].notna()]
     counts = classified_df["best_match"].value_counts()
     n_reads = int(counts.sum())

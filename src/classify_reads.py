@@ -104,7 +104,7 @@ def classify_file(index_path: str, reads_path: str, k: int, output_path: str, db
 def main():
     parser = argparse.ArgumentParser(description="Classify sequencing reads against a pre-built k-mer reference index.")
     parser.add_argument("--index", required=True, help="Path to a k-mer index built by build_reference.py (.pkl)")
-    parser.add_argument("--reads", required=True, help="Path to a FASTA file of reads to classify")
+    parser.add_argument("--reads", required=True, help="Path to a FASTA or FASTQ file of reads to classify")
     parser.add_argument("--k", type=int, default=21, help="K-mer length - MUST match the value used to build the index")
     parser.add_argument("--output", required=True, help="Path to save classification results (.csv)")
     parser.add_argument("--db", required=False, help="Path to the SQLite database file")

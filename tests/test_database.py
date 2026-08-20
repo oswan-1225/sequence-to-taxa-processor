@@ -25,6 +25,19 @@ def test_create_database_creates_missing_parent_dir(tmp_path):
     assert (tmp_path / "nested" / "dir" / "test.db").exists()
 
 
+def test_create_database_accepts_a_bare_filename(tmp_path, monkeypatch):
+    """A db_path with no directory part must not crash.
+
+    os.path.dirname("results.db") is "", and os.makedirs("") raises
+    FileNotFoundError. Reachable via `classify_reads.py --db results.db`.
+    Every other test passes an absolute tmp_path, so nothing else covers it.
+    """
+    monkeypatch.chdir(tmp_path)
+    create_database("results.db")
+
+    assert (tmp_path / "results.db").exists()
+
+
 def test_insert_sample_results_inserts_sample_row_once(tmp_path):
     db_path = str(tmp_path / "test.db")
     create_database(db_path)
@@ -37,9 +50,58 @@ def test_insert_sample_results_inserts_sample_row_once(tmp_path):
     count = conn.execute(
         "SELECT COUNT(*) FROM samples WHERE sample_id = ?", ("sample1",)
     ).fetchone()[0]
+    classification_count = conn.execute(
+        "SELECT COUNT(*) FROM classifications WHERE sample_id = ?", ("sample1",)
+    ).fetchone()[0]
     conn.close()
 
     assert count == 1
+    # The samples row was already deduplicated, but the classifications rows
+    # were not: this second assertion is the one that catches a re-run
+    # appending a duplicate set of reads.
+    assert classification_count == 1
+
+
+def test_reinserting_a_sample_replaces_its_classifications(tmp_path):
+    """Re-running a sample must replace its rows, not append to them.
+
+    pipeline.py always writes to output_dir/classifications.db, so running it
+    twice into the same --output-dir used to double every abundance count
+    while leaving the percentages unchanged, which is why nothing looked wrong.
+    """
+    db_path = str(tmp_path / "test.db")
+    create_database(db_path)
+    first = [{"read_id": f"r{i}", "best_match": "species_a", "confidence": 0.9}
+             for i in range(5)]
+    second = [{"read_id": f"r{i}", "best_match": "species_b", "confidence": 0.9}
+              for i in range(3)]
+
+    insert_sample_results(db_path, "sample1", "local", first)
+    insert_sample_results(db_path, "sample1", "local", second)
+
+    abundance = get_abundance(db_path)
+
+    assert list(abundance["best_match"]) == ["species_b"], "old rows survived the re-run"
+    assert int(abundance["count"].iloc[0]) == 3
+    assert int(abundance["total"].iloc[0]) == 3
+
+
+def test_reinserting_a_sample_leaves_other_samples_alone(tmp_path):
+    """Replacement must be scoped per sample - the --db multi-sample flag needs this."""
+    db_path = str(tmp_path / "test.db")
+    create_database(db_path)
+    sample1 = [{"read_id": "r1", "best_match": "species_a", "confidence": 0.9}]
+    sample2 = [{"read_id": "r1", "best_match": "species_b", "confidence": 0.9},
+               {"read_id": "r2", "best_match": "species_b", "confidence": 0.9}]
+
+    insert_sample_results(db_path, "sample1", "local", sample1)
+    insert_sample_results(db_path, "sample2", "local", sample2)
+    insert_sample_results(db_path, "sample2", "local", sample2)  # re-run sample2 only
+
+    totals = get_classification_totals(db_path).set_index("sample_id")
+
+    assert int(totals.loc["sample1", "total_reads"]) == 1, "sample1 was collateral damage"
+    assert int(totals.loc["sample2", "total_reads"]) == 2
 
 
 def test_insert_sample_results_inserts_one_row_per_result(tmp_path):
