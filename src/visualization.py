@@ -58,6 +58,42 @@ def _gc_footnote_text(flagged: dict[str, str], width: int = 118) -> str | None:
     return "\n".join(lines)
 
 
+def _footnote_height_inches(footnote: str | None) -> float:
+    """
+    Vertical space a footnote needs, in inches, for figure sizing.
+
+    Parameters:
+        footnote: text from _gc_footnote_text(), or None.
+
+    Returns:
+        float: inches to add to the figure height; 0.0 when there is no
+            footnote.
+    """
+    if not footnote:
+        return 0.0
+    return 0.2 * len(footnote.splitlines()) + 0.15
+
+
+def _layout_with_footnote(fig: Figure, footnote: str | None, reserved: float) -> None:
+    """
+    Lay out a figure, keeping the bottom clear for a footnote and drawing it.
+
+    Callers size the figure to include _footnote_height_inches() already, so
+    this only has to stop tight_layout from reclaiming that strip.
+
+    Parameters:
+        fig: the figure to lay out.
+        footnote: text to draw at the bottom left, or None for a plain layout.
+        reserved: fraction of the figure height to keep clear at the bottom.
+    """
+    if not footnote:
+        fig.tight_layout()
+        return
+
+    fig.text(0.01, 0.01, footnote, fontsize=7.5, color=MUTED, va="bottom", ha="left")
+    fig.tight_layout(rect=(0, reserved, 1, 1))
+
+
 def plot_multi_sample_abundance(abundance_df: pd.DataFrame, unclassified_percent: dict[str, float] | pd.Series,
                                  top_n: int = 10, title: str = "Species Abundance", output_path: str | None = None) -> Figure:
     """
@@ -174,8 +210,11 @@ def plot_single_sample_abundance(abundance_df: pd.DataFrame, unclassified_percen
     colors = [UNCLASSIFIED_COLOR if label == "Unclassified" else SPECIES_COLOR for label in combined.index]
 
     owns_figure = ax is None
-    if owns_figure:
-        fig, ax = plt.subplots(figsize=(10, max(4, 0.4 * len(combined))))
+    footnote = _gc_footnote_text(flagged) if owns_figure else None
+    bar_h = max(4.0, 0.4 * len(combined))
+    foot_h = _footnote_height_inches(footnote)
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, bar_h + foot_h))
     else:
         fig = cast(Figure, ax.figure)
 
@@ -195,12 +234,7 @@ def plot_single_sample_abundance(abundance_df: pd.DataFrame, unclassified_percen
                     va="center", fontsize=9, color=MUTED)
 
     if owns_figure:
-        footnote = _gc_footnote_text(flagged)
-        if footnote:
-            fig.text(0.01, 0.01, footnote, fontsize=7.5, color=MUTED, va="bottom", ha="left")
-            fig.tight_layout(rect=(0, 0.06 + 0.02 * footnote.count("\n"), 1, 1))
-        else:
-            fig.tight_layout()
+        _layout_with_footnote(fig, footnote, foot_h / (bar_h + foot_h))
 
     if output_path:
         fig.savefig(output_path, bbox_inches="tight")
@@ -308,7 +342,7 @@ def plot_sample_summary(abundance_df: pd.DataFrame, stats: pd.Series | dict, top
 
     tile_h = 1.15
     bar_h = max(4.0, 0.4 * n_bars)
-    foot_h = 0.0 if footnote is None else 0.2 * (footnote.count("\n") + 1) + 0.15
+    foot_h = _footnote_height_inches(footnote)
 
     fig, (tile_ax, bar_ax) = plt.subplots(
         2, 1,
@@ -320,11 +354,7 @@ def plot_sample_summary(abundance_df: pd.DataFrame, stats: pd.Series | dict, top
     plot_single_sample_abundance(abundance_df, unclassified_percent, top_n=top_n,
                                   title=title, ax=bar_ax)
 
-    if footnote:
-        fig.text(0.01, 0.01, footnote, fontsize=7.5, color=MUTED, va="bottom", ha="left")
-        fig.tight_layout(rect=(0, foot_h / (tile_h + bar_h + foot_h), 1, 1))
-    else:
-        fig.tight_layout()
+    _layout_with_footnote(fig, footnote, foot_h / (tile_h + bar_h + foot_h))
 
     # tight_layout aligns the tile axes with the bar axes, which is inset by
     # the width of the species labels. Widen it back out afterwards so the
