@@ -7,7 +7,7 @@ import click
 from build_reference import load_all_genomes
 from classifier_functions import build_kmer_index
 from classify_reads import classify_file
-from database import get_abundance
+from database import get_abundance, get_classification_totals
 from diversity import diversity_by_sample
 from qc import gc_content, gc_outlier_warnings
 from visualization import plot_species_abundance
@@ -56,7 +56,10 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
             True). species_abundance_csv is get_abundance()'s per-(sample,
             species) breakdown with an added "gc_warning" column (NaN
             unless genome_dir was given and that species was flagged as a
-            GC outlier - see qc.gc_outlier_warnings).
+            GC outlier - see qc.gc_outlier_warnings). diversity_csv is
+            diversity_by_sample()'s per-sample richness/Shannon output,
+            merged with get_classification_totals()'s total/classified/
+            unclassified read counts and unclassified_percent.
     """
     if not index and not genome_dir:
         raise ValueError("Either --index or --genome-dir must be provided.")
@@ -122,6 +125,10 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
         abundance_df.to_csv(species_abundance_path, index=False)
 
         diversity_df = diversity_by_sample(abundance_df)
+        totals_df = get_classification_totals(db_path)
+        diversity_df = totals_df.merge(diversity_df, on="sample_id", how="left")
+        diversity_df[["species_richness", "shannon_diversity"]] = \
+            diversity_df[["species_richness", "shannon_diversity"]].fillna(0)
         diversity_df.to_csv(diversity_csv_path, index=False)
     except Exception as e:
         raise RuntimeError(f"Stage 3 (diversity report) failed: {e}") from e

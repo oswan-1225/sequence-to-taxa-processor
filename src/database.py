@@ -85,3 +85,32 @@ def get_abundance(db_path: str) -> pd.DataFrame:
 
     conn.close()
     return df
+
+def get_classification_totals(db_path: str) -> pd.DataFrame:
+    """
+    Per-sample read counts, including reads with no k-mer match to any
+    reference species (best_match IS NULL) - the rows get_abundance()
+    excludes.
+
+    Parameters:
+        db_path (str): Path to the SQLite database file.
+
+    Returns:
+        pd.DataFrame: columns ['sample_id', 'total_reads', 'classified_reads',
+                      'unclassified_reads', 'unclassified_percent'].
+    """
+    conn = sqlite3.connect(db_path)
+
+    query = """
+        SELECT sample_id,
+               COUNT(*) AS total_reads,
+               SUM(CASE WHEN best_match IS NOT NULL THEN 1 ELSE 0 END) AS classified_reads
+        FROM classifications
+        GROUP BY sample_id
+    """
+    df = pd.read_sql_query(query, conn)
+    conn.close()
+
+    df['unclassified_reads'] = df['total_reads'] - df['classified_reads']
+    df['unclassified_percent'] = df['unclassified_reads'] / df['total_reads'] * 100
+    return df
