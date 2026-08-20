@@ -247,6 +247,18 @@ def test_parse_fastq_qualities_empty_file(tmp_path):
 
 
 def test_build_kmer_index_deduplicates():
+    """The index is keyed on CANONICAL k-mers, so forward/reverse pairs merge.
+
+    Worked through for seq1 = "ACGTACGT" at k=3, whose forward 3-mers are
+    ACG, CGT, GTA, TAC, ACG, CGT:
+
+        ACG  <-> CGT   (reverse complements of each other)  -> "ACG"
+        GTA  <-> TAC   (reverse complements of each other)  -> "GTA"
+
+    Four distinct forward keys collapse to two. seq2's TTT canonicalizes to
+    AAA the same way. Five keys become three, which is the whole point: a
+    read written on either strand now finds the same entry.
+    """
     sequences = {
         "seq1": "ACGTACGT",
         "seq2": "TTTT"
@@ -254,10 +266,8 @@ def test_build_kmer_index_deduplicates():
     k = 3
     expected_index = {
         "ACG": {"seq1"},
-        "CGT": {"seq1"},
         "GTA": {"seq1"},
-        "TAC": {"seq1"},
-        "TTT": {"seq2"}
+        "AAA": {"seq2"}
     }
 
     result = build_kmer_index(sequences, k)

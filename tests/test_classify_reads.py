@@ -26,13 +26,20 @@ def make_index(tmp_path, k=4):
     return str(index_path)
 
 
+# Matches neither species in make_index(), on either strand. Since the index
+# became canonical, "matches nothing" is a stronger condition than it looks:
+# a read also has to miss the reverse complement of every reference k-mer, so
+# a hand-picked run of one base will not do it (see the poly-C test below).
+NO_MATCH_READ = "TTAGTTGTGCCG"
+
+
 def test_classify_file_writes_expected_csv(tmp_path):
     index_path = make_index(tmp_path)
     reads_path = tmp_path / "reads.fasta"
     write_fasta(reads_path, [
         ("read1", "ACGTACGTACGT"),  # matches species_a
         ("read2", "TTTTGGGGTTTT"),  # matches species_b
-        ("read3", "CCCCCCCCCCCC"),  # matches nothing
+        ("read3", NO_MATCH_READ),   # matches nothing, on either strand
     ])
     output_path = tmp_path / "results.csv"
 
@@ -48,6 +55,34 @@ def test_classify_file_writes_expected_csv(tmp_path):
     assert by_read.loc["read2", "best_match"] == "species_b"
     assert pd.isna(by_read.loc["read3", "best_match"])
     assert by_read.loc["read3", "confidence"] == 0.0
+
+
+def test_classify_file_matches_read_on_the_opposite_strand(tmp_path):
+    """A read written on the reverse strand must reach the same species.
+
+    species_b's genome contains "GGGG". A poly-C read is the reverse
+    complement of a poly-G stretch, i.e. literally the other strand of the
+    same duplex, so it belongs to species_b. Against the old forward-only
+    index this read was reported as matching nothing at all.
+
+    This is the unit-scale version of what was measured on SRR10391187,
+    where a read and its reverse complement were assigned to different
+    species for 5.84% of R2 reads.
+    """
+    index_path = make_index(tmp_path)
+    reads_path = tmp_path / "reads.fasta"
+    write_fasta(reads_path, [
+        ("forward", "GGGGGGGGGGGG"),
+        ("reverse", "CCCCCCCCCCCC"),
+    ])
+    output_path = tmp_path / "results.csv"
+
+    results_df = classify_file(index_path, str(reads_path), k=4, output_path=str(output_path))
+
+    by_read = results_df.set_index("read_id")
+    assert by_read.loc["forward", "best_match"] == "species_b"
+    assert by_read.loc["reverse", "best_match"] == "species_b"
+    assert by_read.loc["forward", "confidence"] == by_read.loc["reverse", "confidence"]
 
 
 def test_classify_file_min_quality_drops_low_quality_reads(tmp_path):
@@ -96,7 +131,7 @@ def test_classify_file_redistribute_splits_ambiguous_votes(tmp_path):
     write_fasta(reads_path, [
         ("read1", "ACGTACGTACGT"),  # pure species_a match
         ("read2", "ACGTGGGGTTTT"),  # ambiguous mix of both
-        ("read3", "CCCCCCCCCCCC"),  # matches nothing
+        ("read3", NO_MATCH_READ),   # matches nothing, on either strand
     ])
     output_path = tmp_path / "results.csv"
 

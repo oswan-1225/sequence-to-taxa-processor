@@ -5,7 +5,8 @@ import sys
 
 from classifier_functions import classify_read_top_hit
 from classifier_functions import build_kmer_index
-from fasta_utils import extract_kmers
+from fasta_utils import extract_canonical_kmers
+from fasta_utils import reverse_complement
 
 SRC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src")
 
@@ -59,11 +60,16 @@ def test_classify_read_top_hit_ambiguous_match():
 # out of the single-process assumption in a different way.
 
 
-# Every 4-mer in this read is distinct. Tests that give one species a
-# hand-tuned vote margin need that: in a read like "ACGTACGTACGT" the k-mer
+# Every CANONICAL 4-mer in this read is distinct. Tests that give one species
+# a hand-tuned vote margin need that: in a read like "ACGTACGTACGT" the k-mer
 # "ACGT" recurs, so patching a single index entry would silently change
 # several votes at once instead of one.
-UNIQUE_KMER_READ = "ACGTTGCAAGGCTTACCA"
+#
+# Canonicalization makes this constraint stricter than it used to be. The
+# previous constant here, "ACGTTGCAAGGCTTACCA", has 15 distinct forward 4-mers
+# but only 14 distinct canonical ones, because two of its positions are
+# reverse complements of each other and now collapse onto one key.
+UNIQUE_KMER_READ = "ACCCCATCGGACTGGCAT"
 
 
 def _index_with_order(read, k, species_order):
@@ -72,8 +78,13 @@ def _index_with_order(read, k, species_order):
     classify_read only iterates kmer_index[kmer], so a list works in place of a
     set and gives the test explicit control over the order votes are tallied in
     - the thing the real set makes unpredictable.
+
+    Keys must be CANONICAL, because that is what classify_read looks up. Keying
+    on raw forward k-mers does not fail loudly: the positions that happen to
+    already be canonical still match, so the test keeps passing while quietly
+    exercising only a subset of the read.
     """
-    return {kmer: list(species_order) for kmer in extract_kmers(read, k)}
+    return {kmer: list(species_order) for kmer in extract_canonical_kmers(read, k)}
 
 
 def test_tie_is_unclassified_regardless_of_vote_order():
@@ -100,8 +111,8 @@ def test_clear_winner_is_unaffected_by_vote_order():
     working perfectly while writing an integer into best_match.
     """
     read = UNIQUE_KMER_READ
-    kmers = extract_kmers(read, 4)
-    assert len(kmers) == len(set(kmers)), "read must have unique k-mers for this setup"
+    kmers = extract_canonical_kmers(read, 4)
+    assert len(kmers) == len(set(kmers)), "read must have unique canonical k-mers for this setup"
 
     for order in (["species_a", "species_b"], ["species_b", "species_a"]):
         index = {kmer: ["species_a"] for kmer in kmers}
@@ -118,8 +129,8 @@ def test_clear_winner_is_unaffected_by_vote_order():
 def test_single_vote_margin_still_picks_a_winner():
     """A one-vote lead is a winner, not a tie - the boundary the fix sits on."""
     read = UNIQUE_KMER_READ
-    kmers = extract_kmers(read, 4)
-    assert len(kmers) == len(set(kmers)), "read must have unique k-mers for this setup"
+    kmers = extract_canonical_kmers(read, 4)
+    assert len(kmers) == len(set(kmers)), "read must have unique canonical k-mers for this setup"
     index = {kmer: ["species_a", "species_b"] for kmer in kmers}
     index[kmers[0]] = ["species_a"]  # a leads b by exactly one
 
@@ -127,6 +138,76 @@ def test_single_vote_margin_still_picks_a_winner():
 
     assert result['best_match'] == "species_a"
     assert result['votes']["species_a"] == result['votes']["species_b"] + 1
+
+
+# --- Strand invariance ------------------------------------------------------
+#
+# DNA is double-stranded and a sequencer reports whichever strand it read,
+# without saying which. A read and its reverse complement are the same physical
+# molecule, so the classifier must return the same answer for both.
+#
+# The pre-canonical implementation did not. Measured on SRR10391187 against the
+# forward-only index, a read and its reverse complement were assigned to
+# DIFFERENT species for 0.66% of R1 reads and 5.84% of R2 reads, concentrated
+# almost entirely in E. coli vs S. enterica - two Enterobacteriaceae sharing
+# enough 16S that a strand flip tips the vote between them. It moved the
+# community profile by ~1.5 percentage points on each of that pair.
+#
+# This now holds by construction rather than by approximation, since
+# canonical_kmer(reverse_complement(x)) == canonical_kmer(x) for every k-mer.
+# So these assert exact equality, not "close enough".
+
+
+def test_read_and_its_reverse_complement_classify_identically():
+    """The property the canonical-k-mer change exists to establish."""
+    index = build_kmer_index({
+        "species_a": "ACGTTGCAAGGCTTACCAGGTTACG",
+        "species_b": "TTTTGGGGCCCCAAAATTTTGGGGC",
+    }, k=5)
+    read = "TTGCAAGGCTTACCAG"
+
+    forward = classify_read_top_hit(read, index, k=5)
+    reverse = classify_read_top_hit(reverse_complement(read), index, k=5)
+
+    assert forward['best_match'] == reverse['best_match'] == "species_a"
+    assert forward['votes'] == reverse['votes']
+    assert forward['confidence'] == reverse['confidence']
+
+
+def test_read_matches_reference_stored_on_the_opposite_strand():
+    """A genome that carries a region in reverse orientation still matches.
+
+    This is why the forward-only index did not simply leave reverse-strand
+    reads unclassified: real genomes transcribe genes from both strands, so
+    both orientations are usually present somewhere in the reference set. The
+    failure mode was a wrong answer, not a missing one.
+    """
+    region = "ACGTTGCAAGGCTTACCAGG"
+    index = build_kmer_index({
+        "forward_species": "GGGGGG" + region + "GGGGGG",
+        "reverse_species": "AAAAAA" + reverse_complement(region) + "AAAAAA",
+    }, k=7)
+
+    result = classify_read_top_hit(region, index, k=7)
+
+    # The region is present in both genomes, one on each strand. A
+    # strand-agnostic classifier sees a genuine tie rather than picking the
+    # species whose orientation happens to match how the read was written.
+    assert result['best_match'] is None
+    assert set(result['votes']) == {"forward_species", "reverse_species"}
+    assert len(set(result['votes'].values())) == 1
+
+
+def test_strand_invariance_holds_for_unclassified_reads_too():
+    """A read that matches nothing must match nothing on both strands."""
+    index = build_kmer_index({"species_a": "ACGTACGTACGTACGT"}, k=5)
+    read = "TTAGTTGTGCCGATAC"
+
+    forward = classify_read_top_hit(read, index, k=5)
+    reverse = classify_read_top_hit(reverse_complement(read), index, k=5)
+
+    assert forward['best_match'] is None
+    assert forward == reverse
 
 
 def test_classification_is_reproducible_across_hash_seeds():

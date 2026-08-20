@@ -1,5 +1,5 @@
 from fasta_utils import parse_fasta
-from fasta_utils import extract_kmers
+from fasta_utils import extract_kmers, extract_canonical_kmers
 from tqdm import tqdm
 
 def build_kmer_index(sequences: dict, k: int) -> dict:
@@ -15,7 +15,7 @@ def build_kmer_index(sequences: dict, k: int) -> dict:
     """
     kmer_index = {}
     for seq_name, seq in tqdm(sequences.items(), desc="Indexing genomes"):
-        kmers = extract_kmers(seq, k)
+        kmers = extract_canonical_kmers(seq, k)
         for kmer in kmers:
             kmer_index.setdefault(kmer, set()).add(seq_name)
     return kmer_index
@@ -32,7 +32,7 @@ def classify_read(read_sequence: str, kmer_index: dict, k: int) -> dict:
     Returns:
         dict: A dictionary of sequences names and their k-mer counts in the read
     """
-    read_kmers = extract_kmers(read_sequence, k)
+    read_kmers = extract_canonical_kmers(read_sequence, k)
     classification = {}
     for kmer in read_kmers:
         if kmer in kmer_index:
