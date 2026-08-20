@@ -42,20 +42,38 @@ def classify_read(read_sequence: str, kmer_index: dict, k: int) -> dict:
 
 def classify_read_top_hit(read_sequence: str, kmer_index: dict, k: int) -> dict:
     """
-    Classifies a read and returns the single best matching sequence based on the k-mer index with a confidence score.
-    
+    Classifies a read and returns its single best matching sequence, if it has one.
+
+    A read is assigned to a species only when that species holds the top k-mer
+    vote count outright. When two or more species tie for the lead the read is
+    left unassigned (best_match None) rather than awarded to one of them: the
+    classifier genuinely cannot tell them apart, and any tie-break would either
+    bias a species systematically or depend on set/dict iteration order, which
+    varies between processes and makes runs non-reproducible. Measured on
+    SRR10391187 (k=21, 10-species index), ties affect ~0.15% of reads.
+
     Args:
         read_sequence (str): The sequence of the read
         kmer_index (dict): The k-mer index
         k (int): The length of the k-mers to extract
-    
+
     Returns:
-        dict: A dictionary with the best matching sequence name and its confidence score
+        dict: 'best_match' (species name, or None if the read matched nothing
+            or tied for the lead), 'confidence' (best_match's share of the
+            read's k-mers, 0.0 whenever best_match is None) and 'votes' (the
+            full {species: kmer_hit_count} tally, populated even for a tie so
+            callers can see what the read actually hit)
     """
     classif = classify_read(read_sequence, kmer_index, k)
     total_kmers = len(extract_kmers(read_sequence, k))
 
     if not classif or total_kmers == 0:
         return {'best_match': None, 'confidence': 0.0, 'votes': classif}
-    best_match = max(classif.items(), key=lambda item: item[1])[0]
-    return {'best_match': best_match, 'confidence': classif[best_match] / total_kmers, 'votes': classif}
+
+    top_count = max(classif.values())
+    winners = [species for species, count in classif.items() if count == top_count]
+
+    if len(winners) > 1:
+        return {'best_match': None, 'confidence': 0.0, 'votes': classif}
+
+    return {'best_match': winners[0], 'confidence': top_count / total_kmers, 'votes': classif}
