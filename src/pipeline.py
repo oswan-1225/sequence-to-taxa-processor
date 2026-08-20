@@ -10,7 +10,7 @@ from classify_reads import classify_file
 from database import get_abundance, get_classification_totals
 from diversity import diversity_by_sample
 from qc import gc_content, gc_outlier_warnings
-from visualization import plot_single_sample_abundance
+from visualization import plot_sample_summary
 
 
 def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
@@ -140,8 +140,7 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
         click.echo("Stage 4/4: plotting species abundance...")
         plot_path = os.path.join(output_dir, "abundance_plot.png")
         try:
-            unclassified_percent = diversity_df["unclassified_percent"].iloc[0]
-            plot_single_sample_abundance(abundance_df, unclassified_percent, top_n=top_n, output_path=plot_path)
+            plot_sample_summary(abundance_df, diversity_df.iloc[0], top_n=top_n, output_path=plot_path)
         except Exception as e:
             raise RuntimeError(f"Stage 4 (plot) failed: {e}") from e
         outputs["plot"] = plot_path

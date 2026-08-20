@@ -1,6 +1,62 @@
+import math
+import textwrap
+from typing import cast
+
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+
+SPECIES_COLOR = "#2a78d6"
+UNCLASSIFIED_COLOR = "#898781"
+INK = "#2b2a28"
+MUTED = "#52514e"
+
+
+def _gc_flagged_species(abundance_df: pd.DataFrame) -> dict[str, str]:
+    """
+    Species with a non-empty GC-outlier warning, mapped to the warning text.
+
+    qc.gc_outlier_warnings() deliberately omits non-outliers, so pipeline.py's
+    .map() leaves NaN in the 'gc_warning' column for every species that passed.
+    Returns {} when the column is absent entirely (a caller that never ran the
+    GC check).
+
+    Parameters:
+        abundance_df: DataFrame from database.get_abundance(), optionally with
+            a 'gc_warning' column added by run_pipeline().
+
+    Returns:
+        dict[str, str]: species name -> warning text, for flagged species only.
+    """
+    if "gc_warning" not in abundance_df.columns:
+        return {}
+
+    flagged = abundance_df.dropna(subset=["gc_warning"])
+    flagged = flagged[flagged["gc_warning"].astype(str).str.strip() != ""]
+    return dict(zip(flagged["best_match"], flagged["gc_warning"].astype(str)))
+
+
+def _gc_footnote_text(flagged: dict[str, str], width: int = 118) -> str | None:
+    """
+    Wrapped footnote text for the GC-outlier warnings marked on the bars.
+
+    Parameters:
+        flagged: species -> warning text, from _gc_flagged_species().
+        width: characters per line before wrapping.
+
+    Returns:
+        str | None: the footnote, or None if nothing was flagged.
+    """
+    if not flagged:
+        return None
+
+    lines = []
+    for species, message in flagged.items():
+        lines.append(textwrap.fill(f"* {species}: {message}", width=width,
+                                    subsequent_indent="  "))
+    return "\n".join(lines)
+
 
 def plot_multi_sample_abundance(abundance_df: pd.DataFrame, unclassified_percent: dict[str, float] | pd.Series,
                                  top_n: int = 10, title: str = "Species Abundance", output_path: str | None = None) -> Figure:
@@ -64,7 +120,7 @@ def plot_multi_sample_abundance(abundance_df: pd.DataFrame, unclassified_percent
         fig.savefig(output_path, bbox_inches='tight')
     return fig
 
-def plot_single_sample_abundance(abundance_df: pd.DataFrame, unclassified_percent: float, top_n: int = 10, title: str = "Species Abundance", output_path: str | None = None) -> Figure:
+def plot_single_sample_abundance(abundance_df: pd.DataFrame, unclassified_percent: float, top_n: int = 10, title: str = "Species Abundance", output_path: str | None = None, ax: Axes | None = None) -> Figure:
     """
     Horizontal bar chart of per-species abundance for a single sample,
     ranked highest to lowest, with an explicit "Unclassified" bar.
@@ -85,11 +141,22 @@ def plot_single_sample_abundance(abundance_df: pd.DataFrame, unclassified_percen
         title: title of the plot.
         output_path: if given, save the figure to this path (e.g. .png)
             before returning it.
+        ax: draw into this existing axes instead of creating a new figure.
+            When given, the caller owns the figure - layout and any GC
+            footnote are left to it (see plot_sample_summary, which composes
+            this chart under a row of stat tiles). When None, this function
+            makes its own figure and adds the footnote itself.
+
+    If abundance_df carries a 'gc_warning' column (run_pipeline() adds one),
+    flagged species get a "*" appended to their bar label, keyed to a footnote
+    naming the species and the reason.
 
     Returns:
         matplotlib.figure.Figure: the chart, for the caller to display
             and/or save.
     """
+    flagged = _gc_flagged_species(abundance_df)
+
     abundance_df = abundance_df.copy()
     scale = 1 - (unclassified_percent / 100)
     abundance_df["percent_of_total_reads"] = abundance_df["percent"] * scale
@@ -104,11 +171,14 @@ def plot_single_sample_abundance(abundance_df: pd.DataFrame, unclassified_percen
     combined["Unclassified"] = unclassified_percent
     combined = combined.sort_values(ascending=False)
 
-    SPECIES_COLOR = "#2a78d6"
-    UNCLASSIFIED_COLOR = "#898781"
     colors = [UNCLASSIFIED_COLOR if label == "Unclassified" else SPECIES_COLOR for label in combined.index]
 
-    fig, ax = plt.subplots(figsize=(10, max(4, 0.4 * len(combined))))
+    owns_figure = ax is None
+    if owns_figure:
+        fig, ax = plt.subplots(figsize=(10, max(4, 0.4 * len(combined))))
+    else:
+        fig = cast(Figure, ax.figure)
+
     y_pos = range(len(combined))
     ax.barh(y_pos, list(combined.values), color=colors)
     ax.set_yticks(list(y_pos))
@@ -119,11 +189,148 @@ def plot_single_sample_abundance(abundance_df: pd.DataFrame, unclassified_percen
     for spine in ("top", "right"):
         ax.spines[spine].set_visible(False)
 
-    for i, value in enumerate(combined.values):
-        ax.annotate(f"{value:.1f}%", (value, i), xytext=(4, 0), textcoords="offset points",
-                    va="center", fontsize=9, color="#52514e")
+    for i, (label, value) in enumerate(zip(combined.index, combined.values)):
+        marker = " *" if label in flagged else ""
+        ax.annotate(f"{value:.1f}%{marker}", (value, i), xytext=(4, 0), textcoords="offset points",
+                    va="center", fontsize=9, color=MUTED)
 
-    fig.tight_layout()
+    if owns_figure:
+        footnote = _gc_footnote_text(flagged)
+        if footnote:
+            fig.text(0.01, 0.01, footnote, fontsize=7.5, color=MUTED, va="bottom", ha="left")
+            fig.tight_layout(rect=(0, 0.06 + 0.02 * footnote.count("\n"), 1, 1))
+        else:
+            fig.tight_layout()
+
+    if output_path:
+        fig.savefig(output_path, bbox_inches="tight")
+    return fig
+
+
+def _draw_stat_tiles(ax: Axes, tiles: list[tuple[str, str, str | None]],
+                     pitch: float = 0.25) -> None:
+    """
+    Render a row of stat tiles across a blank axes.
+
+    Each tile is (label, value, sub): a muted sentence-case label, a large
+    semibold value, and an optional smaller line underneath. Text uses the
+    ink/muted grays only - never a series color - so the tiles never read as
+    another data encoding.
+
+    Parameters:
+        ax: a dedicated axes; its frame and ticks are turned off here.
+        tiles: the tiles to draw, left to right.
+        pitch: horizontal spacing between tile origins, as a fraction of the
+            axes width. Fixed rather than 1/len(tiles) so a row of two or
+            three tiles stays grouped at the left instead of being stretched
+            across the full width.
+    """
+    ax.set_axis_off()
+    if not tiles:
+        return
+
+    for i, (label, value, sub) in enumerate(tiles):
+        x = i * pitch
+        ax.text(x, 0.92, label, transform=ax.transAxes, fontsize=9.5,
+                color=MUTED, va="top", ha="left")
+        ax.text(x, 0.66, value, transform=ax.transAxes, fontsize=21,
+                color=INK, va="top", ha="left", fontweight="semibold")
+        if sub:
+            ax.text(x, 0.04, sub, transform=ax.transAxes, fontsize=8.5,
+                    color=MUTED, va="bottom", ha="left")
+
+
+def plot_sample_summary(abundance_df: pd.DataFrame, stats: pd.Series | dict, top_n: int = 10,
+                        title: str = "Species Abundance", output_path: str | None = None) -> Figure:
+    """
+    Single-sample abundance chart with a row of summary stat tiles above it.
+
+    Composes plot_single_sample_abundance() under three tiles carrying the
+    numbers the bars themselves cannot show:
+
+      - Reads classified: the classification rate plus raw sample size. Every
+        bar is a percentage, so nothing else on the figure says how many reads
+        the percentages rest on.
+      - Species detected: species_richness. Distinct from the bar count
+        whenever richness exceeds top_n, since the excess collapses into
+        "Other" - the sub-line says so when that happens.
+      - Evenness: Pielou's J = H / ln(S), the share of the maximum Shannon
+        diversity achievable with S species. Raw H conflates richness with
+        evenness and is unitless; dividing by ln(S) removes the richness
+        term and bounds the result to 0-1, so it compares across samples with
+        different species counts. H is kept as the sub-line since it is what
+        diversity_report.csv reports.
+
+    Unclassified percent deliberately gets no tile - the chart already has an
+    explicit "Unclassified" bar, and the rate is folded into the first tile.
+
+    Parameters:
+        abundance_df: DataFrame from database.get_abundance() for a single
+            sample, optionally with run_pipeline()'s added 'gc_warning'
+            column (which drives the bar markers and footnote).
+        stats: one sample's row from the merged diversity report - a Series or
+            dict with keys 'total_reads', 'classified_reads',
+            'unclassified_percent', 'species_richness', 'shannon_diversity'.
+        top_n: number of species to plot individually before collapsing the
+            rest into "Other".
+        title: title of the abundance chart beneath the tiles.
+        output_path: if given, save the figure to this path before returning it.
+
+    Returns:
+        matplotlib.figure.Figure: the composed figure.
+    """
+    total_reads = int(stats["total_reads"])
+    classified_reads = int(stats["classified_reads"])
+    unclassified_percent = float(stats["unclassified_percent"])
+    richness = int(stats["species_richness"])
+    shannon = float(stats["shannon_diversity"])
+
+    if total_reads > 0:
+        rate = f"{classified_reads / total_reads * 100:.1f}%"
+    else:
+        rate = "n/a"
+
+    # ln(1) is 0, so evenness is undefined for a single species (and for none).
+    evenness = f"{shannon / math.log(richness):.2f}" if richness > 1 else "n/a"
+
+    tiles: list[tuple[str, str, str | None]] = [
+        ("Reads classified", rate, f"{classified_reads:,} of {total_reads:,}"),
+        ("Species detected", f"{richness:,}",
+         f"showing top {top_n} individually" if richness > top_n else None),
+        ("Evenness (Pielou J)", evenness, f"Shannon H = {shannon:.2f}"),
+    ]
+
+    n_species_shown = min(len(abundance_df), top_n)
+    n_bars = n_species_shown + (1 if len(abundance_df) > top_n else 0) + 1
+
+    flagged = _gc_flagged_species(abundance_df)
+    footnote = _gc_footnote_text(flagged)
+
+    tile_h = 1.15
+    bar_h = max(4.0, 0.4 * n_bars)
+    foot_h = 0.0 if footnote is None else 0.2 * (footnote.count("\n") + 1) + 0.15
+
+    fig, (tile_ax, bar_ax) = plt.subplots(
+        2, 1,
+        figsize=(10, tile_h + bar_h + foot_h),
+        gridspec_kw={"height_ratios": [tile_h, bar_h]},
+    )
+
+    _draw_stat_tiles(tile_ax, tiles)
+    plot_single_sample_abundance(abundance_df, unclassified_percent, top_n=top_n,
+                                  title=title, ax=bar_ax)
+
+    if footnote:
+        fig.text(0.01, 0.01, footnote, fontsize=7.5, color=MUTED, va="bottom", ha="left")
+        fig.tight_layout(rect=(0, foot_h / (tile_h + bar_h + foot_h), 1, 1))
+    else:
+        fig.tight_layout()
+
+    # tight_layout aligns the tile axes with the bar axes, which is inset by
+    # the width of the species labels. Widen it back out afterwards so the
+    # tiles start at the figure's left edge instead of floating mid-figure.
+    tile_pos = tile_ax.get_position()
+    tile_ax.set_position((0.015, tile_pos.y0, 0.97, tile_pos.height))
 
     if output_path:
         fig.savefig(output_path, bbox_inches="tight")

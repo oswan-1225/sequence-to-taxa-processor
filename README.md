@@ -134,10 +134,17 @@ classification run with
 
 ### User example plots
 
-`abundance_plot.png` is what `pipeline.py` actually generates by default,
-species ranked by abundance, plus an explicit "Unclassified" bar so you can
-see how much of your sample didn't match any reference genome, without
-needing separate ground truth to interpret it:
+`abundance_plot.png` is what `pipeline.py` actually generates by default:
+species ranked by abundance with an explicit "Unclassified" bar, under a row
+of summary tiles. Reads classified gives the classification rate and the raw
+read count the percentages rest on. Species detected gives richness, which
+exceeds the number of bars whenever `--top-n` collapses the tail into
+"Other". Evenness gives Pielou's J, the share of the maximum Shannon
+diversity attainable with that many species, which unlike raw Shannon is
+bounded 0 to 1 and comparable across samples with different species counts.
+A reference genome flagged as a GC outlier gets a "*" on its bar and a
+footnote naming the reason. None of this needs separate ground truth to
+interpret:
 
 ![Ranked species abundance bar chart for a ZymoBIOMICS run, including an Unclassified bar](docs/example_abundance_plot.png)
 
