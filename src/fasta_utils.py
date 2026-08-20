@@ -1,6 +1,16 @@
-
 import time
 
+# Table for making complementary k-mers
+_COMPLEMENT = str.maketrans({
+    'A': 'T',
+    'T': 'A',
+    'C': 'G',
+    'G': 'C',
+    'a': 't',
+    't': 'a',
+    'c': 'g',
+    'g': 'c',
+})
 
 def parse_fasta(file_path: str) -> dict:
     """
@@ -47,6 +57,51 @@ def extract_kmers(sequence: str, k: int) -> list:
     
     kmers = [sequence[i:i+k] for i in range(len(sequence) - k + 1)]
     return kmers
+
+def reverse_complement(sequence: str) -> str:
+    """ Returns the reverse complement of a DNA sequence """
+    complemented = sequence.translate(_COMPLEMENT)
+
+    reversed_sequence = complemented[::-1]
+
+    return reversed_sequence
+
+def canonical_kmer(kmer: str) -> str:
+    """ Returns whichever of kmer and its reverse complement sorts first """
+    rc = reverse_complement(kmer)
+    return kmer if kmer <= rc else rc 
+
+def extract_canonical_kmers(sequence: str, k: int) -> list:
+    """
+    Extracts every k-mer in a sequence, in canonical form.
+
+    A sequencer reports whichever strand of a double-stranded fragment it
+    happened to read, and does not say which. The same physical DNA can
+    therefore arrive written either as a k-mer or as that k-mer's reverse
+    complement. Both forms have to collapse onto one dictionary key or the
+    index cannot match them, which is what canonical_kmer does.
+
+    This must be applied to BOTH sides - the reference genomes in
+    build_kmer_index and the reads in classify_read. Canonicalizing only one
+    side would make every lookup miss.
+
+    Delegates to extract_kmers rather than reimplementing the slicing, so
+    there is exactly one definition of "the k-mers of a sequence" in the
+    codebase, and its k <= 0 and k > len(sequence) handling is inherited
+    rather than duplicated.
+
+    Args:
+        sequence (str): The input sequence
+        k (int): The length of the k-mers to extract
+
+    Returns:
+        list: The canonical k-mers, in sequence order. Same length as
+            extract_kmers(sequence, k) - canonicalizing rewrites k-mers, it
+            never adds or drops positions.
+    """
+    return [canonical_kmer(kmer) for kmer in extract_kmers(sequence, k)]
+
+
 
 def parse_fastq(filepath: str) -> dict:
     """
@@ -129,3 +184,4 @@ def parse_sequence_file(filepath: str) -> dict:
     print(f"Parsed {len(sequences)} sequences in {elapsed_time:.2f} seconds, Throughput: {rps:.2f} reads/second")
 
     return sequences
+
