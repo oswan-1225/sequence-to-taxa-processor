@@ -132,6 +132,26 @@ publish real reference data to check against. Regenerate it after a fresh
 classification run with
 `python docs/plot_zymobiomics_validation.py` (dataset-specific).
 
+### User example plots
+
+`abundance_plot.png` is what `pipeline.py` actually generates by default,
+species ranked by abundance, plus an explicit "Unclassified" bar so you can
+see how much of your sample didn't match any reference genome, without
+needing separate ground truth to interpret it:
+
+![Ranked species abundance bar chart for a ZymoBIOMICS run, including an Unclassified bar](docs/example_abundance_plot.png)
+
+Real output from the same 390,381-read ZymoBIOMICS run described above
+(`python src/pipeline.py --genome-dir data/reference/Genomes --index
+data/reference/kmer_index.pkl --reads data/raw/sra_reads/SRR10391187_1.fastq
+--output-dir results/`). 3.9% of reads were unclassified here, most
+samples classify cleanly against a reference set that actually contains
+what's in them.
+
+Multi-sample comparison (`plot_multi_sample_abundance()`, a stacked bar
+across samples) exists in `visualization.py` and is used by
+`diversity_report.py --plot`, but `pipeline.py` doesn't yet have a way to
+accumulate multiple runs into one comparable database.
 ### Performance baseline
 
 End-to-end timing on the 390,381-read / 68.66M-k-mer benchmark above:

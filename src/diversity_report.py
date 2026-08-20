@@ -1,7 +1,7 @@
 import argparse
-from database import get_abundance
+from database import get_abundance, get_classification_totals
 from diversity import diversity_by_sample
-from visualization import plot_species_abundance
+from visualization import plot_multi_sample_abundance
 
 
 def generate_report(db_path: str):
@@ -38,7 +38,9 @@ def main():
 
     if args.plot:
         abundance_df = get_abundance(args.db)
-        plot_species_abundance(abundance_df, top_n=args.top_n, output_path=args.plot)
+        totals_df = get_classification_totals(args.db)
+        unclassified_percent = totals_df.set_index("sample_id")["unclassified_percent"]
+        plot_multi_sample_abundance(abundance_df, unclassified_percent, top_n=args.top_n, output_path=args.plot)
         print(f"Abundance plot saved to {args.plot}")
 
 
