@@ -204,4 +204,6 @@ Validation (not core to the tool) uses the **ZymoBIOMICS Microbial Community
 Standard (D6300)**, a commercially defined mock community with known
 composition, BioProject PRJNA587452, SRA accession SRR10391187. Reference
 genomes for its 8 bacterial species and 2 yeast species are committed under
-`data/reference/Genomes/`.
+`data/reference/Genomes/`. The read data itself isn't committed (too
+large); fetch it with `python docs/download_zymobiomics_reads.py`
+(requires the SRA Toolkit's `prefetch`/`fasterq-dump` on PATH).

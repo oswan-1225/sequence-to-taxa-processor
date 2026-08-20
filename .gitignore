@@ -227,6 +227,5 @@ data/reference/*.zip
 results/
 *.pkl
 data/raw/sra_reads/*fastq
-data/raw/sra_reads
 tests/test_notebooks
 CLAUDE.md
