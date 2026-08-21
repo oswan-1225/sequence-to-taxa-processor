@@ -156,17 +156,6 @@ phylogenetically distinct organism, so the remedy amplifies the bias it targets.
 
 Winner-take-all is the default for this reason.
 
-### A note on Zymo's <15% specification
-
-Zymo's datasheet lists "Relative Abundance Deviation in Average - <15%" under
-Specifications, alongside impurity level and cell concentration. It describes
-how far a manufactured lot deviates from the theoretical table, measured by
-Zymo's own shotgun sequencing and reported per-lot on a Certificate of
-Analysis. It is a tolerance on the physical material, not a benchmark for an
-analysis pipeline, and the datasheet sets no accuracy threshold for workflows.
-Deviation measured here is therefore reported as a number, not scored against
-that figure.
-
 ### Validation graphic
 
 ![Observed vs. Zymo's 16S-adjusted expected abundance for each bacterial species in the ZymoBIOMICS mock community](docs/abundance_validation.png)
