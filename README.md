@@ -64,6 +64,11 @@ them with `--help` for their options.
 
 - **k-mer indexing**: every reference genome is broken into overlapping
   k-mers (default k=21) and indexed as `{kmer: set of species}`.
+- **Canonical k-mers**: DNA is double-stranded and a sequencer reports
+  whichever strand it read, without saying which. Every k-mer is stored and
+  looked up as `min(kmer, reverse_complement(kmer))`, so both strands of a
+  fragment collapse onto one key and a read matches regardless of orientation.
+  This is what Kraken2 and other k-mer classifiers do, for the same reason.
 - **Classification**: each read is broken into the same k-mers, and the
   species with the most matching k-mers wins ("top hit"), with a confidence
   score based on vote share. A read is only assigned when one species holds
@@ -86,53 +91,89 @@ them with `--help` for their options.
 ### Validated accuracy
 
 Classified 390,381 real Illumina reads (SRA accession SRR10391187) against a
-10-species ZymoBIOMICS D6300 reference index (k=21, 68.66M k-mers).
+10-species ZymoBIOMICS D6300 reference index (k=21, 65.46M canonical k-mers).
+2.05% of reads were unclassified.
 
 SRR10391187 is 16S rRNA amplicon sequencing (confirmed via SRA's own run
-metadata), so accuracy is measured against Zymo's own 16S-adjusted
-theoretical composition, avoiding a flat per-species split, since rRNA copy
-number varies a lot between species:
+metadata), so accuracy is measured against Zymo's 16S-adjusted theoretical
+composition rather than a flat per-species split, since rRNA copy number varies
+a lot between species:
 
-| Species | Genomic DNA | 16S Only | 16S & 18S |
+| Species | Expected (16S) | Observed | Relative deviation |
 |---|---|---|---|
-| Pseudomonas aeruginosa | 12% | 4.2% | 3.6% |
-| Escherichia coli | 12% | 10.1% | 8.9% |
-| Salmonella enterica | 12% | 10.4% | 9.1% |
-| Lactobacillus fermentum | 12% | 18.4% | 16.1% |
-| Enterococcus faecalis | 12% | 9.9% | 8.7% |
-| Staphylococcus aureus | 12% | 15.5% | 13.6% |
-| Listeria monocytogenes | 12% | 14.1% | 12.4% |
-| Bacillus subtilis | 12% | 17.4% | 15.3% |
-| Saccharomyces cerevisiae | 2% | NA | 9.3% |
-| Cryptococcus neoformans | 2% | NA | 3.3% |
+| Lactobacillus fermentum | 18.4% | 14.01% | 23.9% |
+| Bacillus subtilis | 17.4% | 18.78% | 7.9% |
+| Staphylococcus aureus | 15.5% | 16.52% | 6.6% |
+| Listeria monocytogenes | 14.1% | 12.13% | 14.0% |
+| Salmonella enterica | 10.4% | 13.66% | 31.4% |
+| Escherichia coli | 10.1% | 10.13% | 0.3% |
+| Enterococcus faecalis | 9.9% | 8.56% | 13.5% |
+| Pseudomonas aeruginosa | 4.2% | 5.92% | 40.9% |
 
-(Source: [Zymo's D6300 datasheet](https://files.zymoresearch.com/protocols/_d6300_zymobiomics_microbial_community_standard.pdf),
-Table 1. "16S Only" is copy-number-adjusted for standard bacterial 16S
-primers, which is why the yeasts show `NA`, not `0%`; those primers don't
-amplify fungal rRNA at all. These represent theoretical ideal yields from 16S.)
+Mean relative deviation across the 8 bacteria is 17.3%. Expected values are
+Zymo's published "16S Only" column ([D6300 datasheet](https://files.zymoresearch.com/protocols/_d6300_zymobiomics_microbial_community_standard.pdf),
+Table 1), which is rRNA-copy-number adjusted for standard bacterial primers.
+The two yeasts come out at 0.27% and 0.03%; Zymo lists them as `NA` in that
+column because bacterial 16S primers do not amplify fungal rRNA at all.
 
-Winner-take-all classification (each read's full weight goes to its best
-match) lands within 14.8% mean relative deviation of that target across
-the 8 bacteria (Zymo's own protocol states <15% relative abundance deviation). The two yeasts are basically invisible in this data, which is intentional.  
-Bacterial 16S primers don't pick up fungal
-rRNA, and Zymo's own 16S numbers list the yeasts as not applicable. Our
-observed 0.06% and 0.22% line up with that.
+**Pseudomonas aeruginosa is the largest miss, and that is the expected
+behaviour of this method.** Zymo's own bioinformatics appendix states that
+conserved rRNA sequences cause reads from high-abundance microbes to be
+assigned to low-abundance ones, "resulting in the overestimation of
+low-abundance microbes in the standard". P. aeruginosa has the lowest
+16S-adjusted expectation in the panel: Zymo's formula is
+`16S share proportional to (DNA fraction / genome size) x copies per genome`,
+and it has both the largest genome (6.792 Mb) and the fewest 16S copies (4).
+It is the low-abundance species the appendix describes, and it is
+overestimated.
 
-Two alternatives were tested and rejected in favor of winner-take-all.
-Proportional vote-share redistribution (splitting a read's credit across
-every species it hits, instead of giving it all to one winner) comes in
-worse, at 27.3% mean deviation. Discarding ambiguous multi-genome reads
-entirely, Zymo's own suggested fix for this kind of ambiguity, throws away
-93.7% of the reads here and still lands at 138.7%, since with 16S amplicon
-data almost every read overlaps a region shared across species.
-Winner-take-all wins clearly, so that's the reported method.
+The structural reason is visible in the data. 92.35% of reads match 8 of the
+10 indexed species, and only 3.77% match exactly one. For almost every read the
+classifier is choosing among species that all matched, on narrow k-mer vote
+margins inside a conserved gene.
+
+### Comparison of abundance estimation methods
+
+Three methods were measured on the same run. All three are reproducible from
+the saved `classifications.csv` via its `n_species_hit` column.
+
+| Method | Mean relative deviation | Reads used |
+|---|---|---|
+| Winner-take-all (default) | 17.3% | 100% |
+| Proportional vote redistribution (`--redistribute`) | 30.0% | 100% |
+| Discarding ambiguous reads | 161.7% | 3.77% |
+
+Redistribution splits each read's k-mer votes across every species it hit. It
+does worse because when 92% of reads hit everything, proportional splitting
+drives every estimate toward 1/8 = 12.5% and erases the signal.
+
+Discarding reads that match more than one genome is the fix Zymo's appendix
+suggests. It is by far the worst option here, because the uniquely-mapping
+reads are not a representative sample: P. aeruginosa is 4.2% of the community
+but 35.2% of them, while Staphylococcus aureus contributes 3 reads in total. On
+amplicon data the only reads that map uniquely come from the most
+phylogenetically distinct organism, so the remedy amplifies the bias it targets.
+
+Winner-take-all is the default for this reason.
+
+### A note on Zymo's <15% specification
+
+Zymo's datasheet lists "Relative Abundance Deviation in Average - <15%" under
+Specifications, alongside impurity level and cell concentration. It describes
+how far a manufactured lot deviates from the theoretical table, measured by
+Zymo's own shotgun sequencing and reported per-lot on a Certificate of
+Analysis. It is a tolerance on the physical material, not a benchmark for an
+analysis pipeline, and the datasheet sets no accuracy threshold for workflows.
+Deviation measured here is therefore reported as a number, not scored against
+that figure.
 
 ### Validation graphic
 
 ![Observed vs. Zymo's 16S-adjusted expected abundance for each bacterial species in the ZymoBIOMICS mock community](docs/abundance_validation.png)
 
-Same run as above, plotted against Zymo's 16S-adjusted composition. Yeasts
-aren't included, no valid 16S target to compare them against. Not a core
+Same run as above, plotted against Zymo's 16S-adjusted composition and sorted
+by relative deviation, matching the metric the subtitle reports. Yeasts aren't
+included, no valid 16S target to compare them against. Not a core
 part of the pipeline either; this only works because Zymo happens to
 publish real reference data to check against. Regenerate it after a fresh
 classification run with
@@ -156,10 +197,10 @@ interpret:
 
 Real output from the same 390,381-read ZymoBIOMICS run described above
 (`python src/pipeline.py --genome-dir data/reference/Genomes --index
-data/reference/kmer_index.pkl --reads data/raw/sra_reads/SRR10391187_1.fastq
---output-dir results/`). 4.1% of reads were unclassified here, most
-samples classify cleanly against a reference set that actually contains
-what's in them.
+data/reference/kmer_index_canonical.pkl --reads
+data/raw/sra_reads/SRR10391187_1.fastq --output-dir results/`). 2.05% of reads
+were unclassified here; most samples classify cleanly against a reference set
+that actually contains what's in them.
 
 Multi-sample comparison (`plot_multi_sample_abundance()`, a stacked bar
 across samples) exists in `visualization.py` and is used by
@@ -167,16 +208,20 @@ across samples) exists in `visualization.py` and is used by
 accumulate multiple runs into one comparable database.
 ### Performance baseline
 
-End-to-end timing on the 390,381-read / 68.66M-k-mer benchmark above:
+Full pipeline on the 390,381-read / 65.46M-canonical-k-mer benchmark above:
 
-- Index load: ~56s
-- Classification: ~68s (~5,700 reads/sec)
-- Total: ~134s
+- Index load: ~50s
+- Full pipeline (load, classify, database, diversity, plot): ~3m03s
+- Index build from 10 genomes: ~3m25s
 
-Reproduce with `src/benchmark.py`:
+Canonicalizing costs roughly 120 microseconds per 301bp read at k=21, which
+about doubles classification time against a forward-only index. That is the
+price of matching reads on either strand.
+
+Reproduce the classification stage with `src/benchmark.py`:
 
 ```bash
-python src/benchmark.py   --index data/reference/kmer_index.pkl   --reads data/raw/sra_reads/SRR10391187_1.fastq   --k 21
+python src/benchmark.py   --index data/reference/kmer_index_canonical.pkl   --reads data/raw/sra_reads/SRR10391187_1.fastq   --k 21
 ```
 
 `--sample-size N` classifies only the first N reads. Throughput on a small
@@ -186,9 +231,11 @@ sample runs higher than the full-run figure above, so quote the full run.
 
 Classification is deterministic: two runs over the same reads and index
 produce byte-identical `classifications.csv`, verified on the 390,381-read
-benchmark. Ties are what used to break this, and they are now left
-unclassified rather than resolved by set iteration order (see "How it
-works" above).
+benchmark against the canonical index (matching MD5). Ties are what used to
+break this, and they are now left unclassified rather than resolved by set
+iteration order (see "How it works" above). Ties affect 0.14% of reads here,
+and that figure is recomputable from a saved run via the `n_species_hit`
+column rather than being a number quoted from a one-off script.
 
 ### Docker
 
@@ -234,13 +281,14 @@ sequence-to-taxa-processor/
 
 ### Project status
 
-- **Done**: core k-mer classifier, proportional vote-splitting for
-  abundance estimates, real FASTA/FASTQ parsing, SQLite storage with
-  per-sample abundance queries, diversity metrics (species richness,
-  Shannon index), GC-outlier and read-quality QC (`qc.py`), a
-  species-abundance-by-sample visualization, a unified `pipeline.py` CLI,
-  CI running the test suite on every push, Docker containerization
-  (see above).
+- **Done**: core k-mer classifier with canonical (strand-agnostic) k-mers,
+  proportional vote-splitting for abundance estimates, real FASTA/FASTQ
+  parsing, a versioned on-disk index format validated on load, SQLite storage
+  with per-sample abundance queries and per-read ambiguity counts, diversity
+  metrics (species richness, Shannon index), GC-outlier and read-quality QC
+  (`qc.py`), a species-abundance-by-sample visualization, a unified
+  `pipeline.py` CLI, CI running the test suite on every push, Docker
+  containerization (see above).
 - **Not yet started**: Nextflow workflow orchestration, polished demo
   notebooks.
 

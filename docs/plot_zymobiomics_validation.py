@@ -69,7 +69,13 @@ def plot_abundance_comparison(observed: dict[str, float], expected: dict[str, fl
     against its expected abundance (%), sorted by the size of the miss
     (largest deviation first, so the reader's eye lands there).
     """
-    species = sorted(observed.keys(), key=lambda s: abs(observed[s] - expected[s]), reverse=True)
+    # Sorted by RELATIVE deviation, matching the metric the subtitle reports.
+    # Absolute deviation (percentage points) was used here previously and
+    # disagreed with the subtitle: it ranks a 4.4pp miss on an 18.4%-expected
+    # species above a 1.7pp miss on a 4.2%-expected one, even though the latter
+    # is the far larger relative error and the one worth the reader's eye.
+    species = sorted(observed.keys(),
+                     key=lambda s: abs(observed[s] - expected[s]) / expected[s], reverse=True)
     expected_vals = [expected[s] for s in species]
     observed_vals = [observed[s] for s in species]
 
