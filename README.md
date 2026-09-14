@@ -110,7 +110,9 @@ a lot between species:
 | Enterococcus faecalis | 9.9% | 8.56% | 13.5% |
 | Pseudomonas aeruginosa | 4.2% | 5.92% | 40.9% |
 
-Mean relative deviation across the 8 bacteria is 17.3%. Expected values are
+Mean relative deviation across the 8 bacteria is 17.3% (95% bootstrap CI
+[17.0%, 17.7%] - see "Comparison of abundance estimation methods" below).
+Expected values are
 Zymo's published "16S Only" column ([D6300 datasheet](https://files.zymoresearch.com/protocols/_d6300_zymobiomics_microbial_community_standard.pdf),
 Table 1), which is rRNA-copy-number adjusted for standard bacterial primers.
 The two yeasts come out at 0.27% and 0.03%; Zymo lists them as `NA` in that
@@ -135,13 +137,22 @@ margins inside a conserved gene.
 ### Comparison of abundance estimation methods
 
 Three methods were measured on the same run. All three are reproducible from
-the saved `classifications.csv` via its `n_species_hit` column.
+the saved `classifications.csv` via its `n_species_hit` column, and the two
+winner-based methods carry a 95% bootstrap confidence interval
+(`docs/compare_abundance_methods.py`, 10,000 resamples of the per-species
+count vector) so the numbers can be judged against sampling noise rather than
+treated as exact.
 
-| Method | Mean relative deviation | Reads used |
-|---|---|---|
-| Winner-take-all (default) | 17.3% | 100% |
-| Proportional vote redistribution (`--redistribute`) | 30.0% | 100% |
-| Discarding ambiguous reads | 161.7% | 3.77% |
+| Method | Mean relative deviation | 95% CI | Reads used |
+|---|---|---|---|
+| Winner-take-all (default) | 17.3% | [17.0%, 17.7%] | 100% |
+| Proportional vote redistribution (`--redistribute`) | 30.0% | n/a | 100% |
+| Discarding ambiguous reads | 161.7% | [159.4%, 163.9%] | 3.77% |
+
+Redistribution has no interval: a read's vote splits fractionally across every
+species it hit, so outcomes are correlated within a read rather than
+independent draws, and the multinomial model behind the other two intervals
+doesn't apply. It also loses by 12+ points regardless.
 
 Redistribution splits each read's k-mer votes across every species it hit. It
 does worse because when 92% of reads hit everything, proportional splitting
