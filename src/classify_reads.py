@@ -9,6 +9,22 @@ from pathlib import Path
 from database import insert_sample_results, create_database
 from collections import defaultdict
 
+
+def derive_sample_id(reads_path: str) -> str:
+    """
+    The sample_id a reads file is stored under in the database: its filename
+    stem with a trailing "_1" or "_2" removed, so both mates of a paired-end
+    run (e.g. sample_1.fastq / sample_2.fastq) resolve to the same sample_id
+    instead of being treated as two different samples.
+
+    Pulled out as its own function so pipeline.py can compute the same
+    sample_id classify_file() is about to write under - it needs to know
+    that value in advance to scope a run's own report/plot to just this
+    sample, even when --db points at a database that already holds others.
+    """
+    return Path(reads_path).stem.removesuffix("_1").removesuffix("_2")
+
+
 def classify_file(index_path: str, reads_path: str, k: int, output_path: str, db_path: str = None,
                    source: str = None, min_quality: Optional[float] = None,
                    redistribute: bool = False) -> pd.DataFrame:
@@ -108,7 +124,7 @@ def classify_file(index_path: str, reads_path: str, k: int, output_path: str, db
 
     if db_path:
         create_database(db_path)
-        sample_id = Path(reads_path).stem.removesuffix("_1").removesuffix("_2")
+        sample_id = derive_sample_id(reads_path)
         insert_sample_results(db_path, sample_id, source or "unknown", results)
         print(f"Inserted {len(results)} classification rows into database at {db_path} (sample_id={sample_id})")
 

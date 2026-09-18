@@ -46,6 +46,10 @@ diversity report, species-abundance CSV, abundance plot) lands in
 - `--redistribute` also writes a second, proportional vote-share
   abundance CSV alongside the normal winner-take-all one. Off by default,
   see "How it works" and "Validated accuracy" below for why.
+- `--db path/to/shared.db` writes the current run's results into an existing (or
+  brand new) database instead of a fresh `output-dir/classifications.db`,
+  so multiple `pipeline.py` runs (one per sample) can share one database.
+  Pair with `diversity_report.py --plot` for a cross-sample comparison.
 
 If `--genome-dir` is given, those reference genomes also get checked for
 GC-content outliers (`src/qc.py`). You'll see a warning if a species'

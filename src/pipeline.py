@@ -5,7 +5,7 @@ import click
 
 from build_reference import load_all_genomes
 from classifier_functions import build_kmer_index, save_index
-from classify_reads import classify_file
+from classify_reads import classify_file, derive_sample_id
 from database import get_abundance, get_classification_totals
 from diversity import diversity_by_sample
 from qc import gc_content, gc_outlier_warnings
@@ -15,7 +15,7 @@ from visualization import plot_sample_summary
 def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
                   index: Optional[str] = None, source: Optional[str] = None, top_n: int = 10,
                   skip_plot: bool = False, min_quality: Optional[float] = None,
-                  redistribute: bool = False) -> dict:
+                  redistribute: bool = False, db: Optional[str] = None) -> dict:
     """
     Run the full build -> classify -> diversity -> plot pipeline for a single
     read file, writing every output into output_dir.
@@ -47,6 +47,16 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
         redistribute: if True, also produce a proportional vote-share
             abundance CSV alongside the winner-take-all one - off by
             default, see classify_reads.classify_file for why.
+        db: path to a classification database to add this sample's results
+            into, instead of always creating a fresh output_dir/
+            classifications.db. Lets multiple pipeline runs (one per reads
+            file) accumulate into the same database - pass the same --db
+            path on every run in a series, including the first, since
+            database.create_database() creates the file if it doesn't
+            exist yet. Each run's sample_id (derived from the reads
+            filename, see classify_reads.classify_file) must stay distinct
+            from any sample already in that database, or its rows get
+            replaced (see insert_sample_results).
 
     Returns:
         dict: paths to the outputs actually produced. Keys: "index",
@@ -104,8 +114,9 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
 
     click.echo("Stage 2/4: classifying reads...")
     csv_path = os.path.join(output_dir, "classifications.csv")
-    db_path = os.path.join(output_dir, "classifications.db")
+    db_path = db if db else os.path.join(output_dir, "classifications.db")
     source_name: str = source if source is not None else ""
+    sample_id = derive_sample_id(reads)
     try:
         classify_file(index_path, reads, k, csv_path, db_path=db_path, source=source_name,
                       min_quality=min_quality, redistribute=redistribute)
@@ -118,12 +129,19 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
     diversity_csv_path = os.path.join(output_dir, "diversity_report.csv")
     species_abundance_path = os.path.join(output_dir, "species_abundance.csv")
     try:
+        # get_abundance/get_classification_totals return every sample
+        # currently in db_path, not just the one just classified - db_path
+        # may be a --db shared with other pipeline runs. Filter down to this
+        # run's own sample_id so this run's report/plot describe only this
+        # sample, regardless of who else's data lives in the same database.
         abundance_df = get_abundance(db_path)
+        abundance_df = abundance_df[abundance_df["sample_id"] == sample_id].reset_index(drop=True)
         abundance_df["gc_warning"] = abundance_df["best_match"].map(gc_warnings)
         abundance_df.to_csv(species_abundance_path, index=False)
 
         diversity_df = diversity_by_sample(abundance_df)
         totals_df = get_classification_totals(db_path)
+        totals_df = totals_df[totals_df["sample_id"] == sample_id].reset_index(drop=True)
         diversity_df = totals_df.merge(diversity_df, on="sample_id", how="left")
         diversity_df[["species_richness", "shannon_diversity"]] = \
             diversity_df[["species_richness", "shannon_diversity"]].fillna(0)
@@ -166,12 +184,19 @@ def run_pipeline(genome_dir: str, reads: str, output_dir: str, k: int = 21,
               help="Also produce a proportional vote-share abundance CSV alongside the "
                    "winner-take-all one. Off by default - not recommended for 16S amplicon "
                    "data, see README 'Validated accuracy'.")
-def main(genome_dir, reads, output_dir, k, index, source, top_n, skip_plot, min_quality, redistribute):
+@click.option("--db", default=None,
+              help="Path to a classification database to add this sample into, instead of "
+                   "creating a fresh output-dir/classifications.db. Use the same --db path "
+                   "across multiple runs (different --reads each time) to accumulate samples "
+                   "into one database - it's created if it doesn't exist yet. Each run's "
+                   "sample_id is derived from the reads filename, so two different reads "
+                   "files that produce the same sample_id will overwrite each other in the db.")
+def main(genome_dir, reads, output_dir, k, index, source, top_n, skip_plot, min_quality, redistribute, db):
     """Run the full build -> classify -> diversity -> plot pipeline in one command."""
     try:
         outputs = run_pipeline(genome_dir, reads, output_dir, k=k, index=index,
                                 source=source, top_n=top_n, skip_plot=skip_plot,
-                                min_quality=min_quality, redistribute=redistribute)
+                                min_quality=min_quality, redistribute=redistribute, db=db)
     except (ValueError, RuntimeError) as e:
         raise click.ClickException(str(e))
 
