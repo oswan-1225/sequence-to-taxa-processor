@@ -206,10 +206,12 @@ data/raw/sra_reads/SRR10391187_1.fastq --output-dir results/`). 2.05% of reads
 were unclassified here; most samples classify cleanly against a reference set
 that actually contains what's in them.
 
-Multi-sample comparison (`plot_multi_sample_abundance()`, a stacked bar
-across samples) exists in `visualization.py` and is used by
-`diversity_report.py --plot`, but `pipeline.py` doesn't yet have a way to
-accumulate multiple runs into one comparable database.
+Multi-sample comparisons reuse one database across runs: point every
+sample's `pipeline.py` invocation (each with its own `--output-dir`) at the
+same `--db` path, then run `diversity_report.py --db shared.db --plot
+out.png` for the stacked-bar comparison. Each `pipeline.py` run's report and plot still describe only the sample it just classified, even
+if the database holds many.
+
 ### Performance baseline
 
 Full pipeline on the 390,381-read / 65.46M-canonical-k-mer benchmark above:
