@@ -46,10 +46,11 @@ diversity report, species-abundance CSV, abundance plot) lands in
 - `--redistribute` also writes a second, proportional vote-share
   abundance CSV alongside the normal winner-take-all one. Off by default,
   see "How it works" and "Validated accuracy" below for why.
-- `--db path/to/shared.db` writes the current run's results into an existing (or
-  brand new) database instead of a fresh `output-dir/classifications.db`,
-  so multiple `pipeline.py` runs (one per sample) can share one database.
-  Pair with `diversity_report.py --plot` for a cross-sample comparison.
+- `--db path/to/shared.db` writes the current run's results into an
+  existing (or brand new) database instead of a fresh
+  `output-dir/classifications.db`, so multiple `pipeline.py` runs (one per
+  sample) can share one database. Pair with `diversity_report.py --plot`
+  for a cross-sample comparison.
 
 If `--genome-dir` is given, those reference genomes also get checked for
 GC-content outliers (`src/qc.py`). You'll see a warning if a species'
@@ -171,6 +172,23 @@ phylogenetically distinct organism, so the remedy amplifies the bias it targets.
 
 Winner-take-all is the default for this reason.
 
+### R1/R2 agreement
+
+R1 and R2 are the forward and reverse reads of the same physical DNA
+fragments (paired-end sequencing). Full R2 run, same canonical index, same
+method: 17.7% [17.4%, 18.1%] mean relative deviation, against R1's 17.3%
+[17.0%, 17.7%] - overlapping confidence intervals. Discard-ambiguous
+(149.7%) and redistribution (34.2%) show the same failure modes as R1 at
+different exact values.
+
+R2's unclassified rate is 5.12%, more than double R1's 2.05%. A k-mer
+containing an ambiguous base (`N`) can never match a reference k-mer,
+which explains almost all of R1's unclassified reads (87% of them contain
+an `N`). It only explains a third of R2's, though - the rest track R2's
+lower overall base quality (mean Phred 32.4 vs R1's 35.8), i.e. ordinary
+low-confidence miscalls that corrupt a read's k-mers without being called
+an outright `N`.
+
 ### Validation graphic
 
 ![Observed vs. Zymo's 16S-adjusted expected abundance for each bacterial species in the ZymoBIOMICS mock community](docs/abundance_validation.png)
@@ -209,14 +227,16 @@ that actually contains what's in them.
 Multi-sample comparisons reuse one database across runs: point every
 sample's `pipeline.py` invocation (each with its own `--output-dir`) at the
 same `--db` path, then run `diversity_report.py --db shared.db --plot
-out.png` for the stacked-bar comparison. Each `pipeline.py` run's report and plot still describe only the sample it just classified, even
-if the database holds many.
+out.png` for the stacked-bar comparison. Each `pipeline.py` run's report
+and plot still describe only the sample it just classified, even if the
+database holds many.
 
 ### Performance baseline
 
 Full pipeline on the 390,381-read / 65.46M-canonical-k-mer benchmark above:
 
-- Index load: ~50s
+- Index load: 60.6s
+- Classification only: 117.4s (3,326 reads/sec)
 - Full pipeline (load, classify, database, diversity, plot): ~3m03s
 - Index build from 10 genomes: ~3m25s
 
